@@ -1,10 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ExternalLink, Info, LogIn, LogOut, Settings2, UserRound } from 'lucide-react';
+import { Download, ExternalLink, Info, LogIn, LogOut, Settings2, UserRound } from 'lucide-react';
 import { useAccount } from './AccountContext';
+import { installDesktopUpdate, useDesktopUpdates } from './settings/DesktopUpdates';
 
 export function ProfileMenu() {
   const { user, configured, loading, signingIn, login, logout } = useAccount();
+  const { available, busy, status } = useDesktopUpdates();
+  const updateDescription = useId();
   const [failedAvatar, setFailedAvatar] = useState('');
   const avatar = user?.avatar && user.avatar !== failedAvatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" onError={() => setFailedAvatar(user.avatar)} /> : <UserRound aria-hidden="true" size={20} strokeWidth={1.5} />;
   const [open, setOpen] = useState(false);
@@ -37,9 +40,10 @@ export function ProfileMenu() {
       trigger.current?.focus();
     }
   }}>
-    <button ref={trigger} className="profile-button" aria-label="Profile menu" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(value => !value)} onKeyDown={event => {
+    <button ref={trigger} className="profile-button" aria-label="Profile menu" aria-describedby={available ? updateDescription : undefined} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(value => !value)} onKeyDown={event => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true); }
-    }}>{avatar}</button>
+    }}>{avatar}{available && <span className="profile-update-dot" aria-hidden="true" />}</button>
+    {available && <span id={updateDescription} className="sr-only">Update available</span>}
     {open && <div className="profile-menu" ref={menu} id={id} role="menu" aria-label="Profile" onKeyDown={event => {
       const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
       const index = items.indexOf(document.activeElement as HTMLElement);
@@ -51,6 +55,10 @@ export function ProfileMenu() {
       <div className="profile-menu-divider" role="separator" />
       <Link role="menuitem" tabIndex={-1} to="/settings"><Settings2 aria-hidden="true" size={16} />Settings</Link>
       <Link role="menuitem" tabIndex={-1} to="/settings/about"><Info aria-hidden="true" size={16} />About</Link>
+      {available && <>
+        <button role="menuitem" tabIndex={-1} className="profile-menu-update" aria-disabled={busy} onClick={() => { if (!busy) void installDesktopUpdate(); }}><Download aria-hidden="true" size={16} />{busy ? 'Installing update...' : 'Install update'}</button>
+        <p className="profile-update-status" role="status">{status}</p>
+      </>}
       <div className="profile-menu-divider" role="separator" />
       <button role="menuitem" tabIndex={-1} aria-disabled={!user || loading} className={`profile-menu-signout${!user || loading ? ' is-dimmed' : ''}`} onClick={() => { if (user && !loading) { setOpen(false); void logout(); trigger.current?.focus(); } }}><LogOut aria-hidden="true" size={16} />Sign out</button>
     </div>}

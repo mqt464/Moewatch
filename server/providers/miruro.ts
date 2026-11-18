@@ -2,7 +2,7 @@ import { gunzipSync } from 'node:zlib';
 import type { AnimeProvider } from './types';
 import type { AnimeIdentity, ProviderEpisode, ProviderServer, ProviderTitle, ResolvedPlayback, TitleMatch } from '../../shared/api';
 import { ApiError } from '../infrastructure/errors';
-import { idDecode, idEncode, matching, media, origin, record, request } from './common';
+import { idDecode, idEncode, media, origin, record, request } from './common';
 
 const configured = Boolean(process.env.MOEWATCH_MIRURO_ORIGIN);
 const base = origin(process.env.MOEWATCH_MIRURO_ORIGIN || 'https://www.miruro.tv', 'miruro');

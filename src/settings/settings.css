@@ -84,6 +84,7 @@
 .settings-notice { margin-top: 24px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .settings-notice-error { color: #f4a6ad; }
 .settings-inline-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--pink); font-size: 12px; }
+.setting-control > .settings-inline-link { min-height: 24px; }
 .settings-inline-link:hover { text-decoration: underline; }
 html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, html[data-reduce-motion='true'] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 html[data-reduce-motion='true']::view-transition-group(*), html[data-reduce-motion='true']::view-transition-old(*), html[data-reduce-motion='true']::view-transition-new(*) { animation: none !important; }

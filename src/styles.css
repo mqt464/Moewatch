@@ -28,7 +28,7 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 p { line-height: 1.65; }
 ::selection { background: var(--pink); color: #000; }
 :is(button, a, input, select, video, [tabindex]):focus-visible { outline: 2px solid var(--pink); outline-offset: 4px; }
-main:focus { outline: none; }
+main[tabindex="-1"]:focus { outline: none; }
 .content-wrap { width: calc(100% - var(--gutter) * 2); max-width: 1560px; margin-inline: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .skip-link { position: fixed; top: 8px; left: 16px; z-index: 100; padding: 12px; background: var(--pink); color: #000; transform: translateY(-150%); }
@@ -76,7 +76,11 @@ html.no-view-transitions .page-scene { animation: page-enter 160ms var(--ease-ou
 .header nav a:hover, .header nav a.active { color: #fff; }
 .header nav a.active::after { content: ''; position: absolute; bottom: 18px; left: 0; right: 0; height: 2px; background: var(--pink); }
 .profile-container { position: relative; margin-left: auto; }
-.profile-button { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; overflow: hidden; border: 1px solid #51424b; border-radius: 50%; background: #211b20; color: #cbbdc5; transition: border-color .12s, background .12s; }
+.profile-button { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 1px solid #51424b; border-radius: 50%; background: #211b20; color: #cbbdc5; transition: border-color .12s, background .12s; }
+.profile-update-dot { position: absolute; top: -1px; right: -1px; width: 11px; height: 11px; border: 2px solid var(--surface); border-radius: 50%; background: var(--pink); pointer-events: none; }
+.profile-menu [role='menuitem'].profile-menu-update { color: var(--pink); }
+.profile-menu-update[aria-disabled='true'] { opacity: .6; cursor: default; }
+.profile-update-status { padding: 0 10px 8px 37px; color: var(--muted); font-size: 11px; }
 .profile-button:hover, .profile-button[aria-expanded='true'] { border-color: var(--pink); background: #30232b; }
 .profile-button > img, .profile-small-avatar > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .profile-menu { position: absolute; top: calc(100% + 12px); right: 0; width: 236px; max-width: calc(100vw - 44px); padding: 6px; border: 1px solid #393038; border-radius: 9px; background: #141114; box-shadow: 0 12px 40px #0008; }

@@ -13,8 +13,11 @@ import { cacheProvider } from './infrastructure/provider-cache';
 import { AccountService } from './account';
 import { createSkipService } from './aniskip';
 import { createDiscordPresence, validateDiscordPlayback } from './discord';
+import { DownloadService } from './downloads';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
-export type AppOptions = { providers?: AnimeProvider[]; catalog?: Catalog; episodeMetadata?: ReturnType<typeof createEpisodeMetadata> };
+export type AppOptions = { providers?: AnimeProvider[]; catalog?: Catalog; episodeMetadata?: ReturnType<typeof createEpisodeMetadata>; downloadStateFile?: string; downloadLocation?: string };
 
 const identity = (anime: Anime): AnimeIdentity => ({ id: anime.id, title: anime.title, romaji: anime.romaji, year: anime.year, format: anime.format, episodes: anime.episodes });
 const positive = (value: string): number => {
@@ -98,6 +101,12 @@ export function createApiHandler(options: AppOptions = {}) {
   const account = new AccountService();
   const skipTimes = createSkipService();
   const discord = createDiscordPresence();
+  const downloads = new DownloadService({
+    stateFile: options.downloadStateFile, defaultLocation: options.downloadLocation,
+    read: media.read, resolve: playback,
+    artwork: async url => media.issue(url),
+    thumbnail: (anime, episode, request, signal) => providerThumbnail(anime, episode, request.provider || 'auto', request.audio || 'sub', request.fallback !== false, signal),
+  });
 
   async function animeById(id: number, signal: AbortSignal, allowCached = false): Promise<Anime | null> {
     if (allowCached && identities.has(id)) return identities.get(id)!;
@@ -167,7 +176,7 @@ export function createApiHandler(options: AppOptions = {}) {
     return null;
   }
 
-  async function playback(request: PlaybackRequest, signal: AbortSignal) {
+  async function playback(request: PlaybackRequest, signal: AbortSignal, excluded: string[] = []) {
     const deadline = AbortSignal.any([signal, AbortSignal.timeout(25_000)]);
     const anime = await animeById(request.animeId, deadline, true);
     if (!anime) throw new ApiError('NOT_FOUND', 'Anime not found', 404);
@@ -188,6 +197,7 @@ export function createApiHandler(options: AppOptions = {}) {
         const eligible = (preferredServer ? [...matchingServers.filter(server => server.id === preferredServer), ...(request.fallback !== false ? matchingServers.filter(server => server.id !== preferredServer) : [])] : matchingServers).slice(0, 6);
         if (!eligible.length) { attempts.push({ provider: provider.id, code: 'UNAVAILABLE', message: 'No matching server' }); continue; }
         for (const server of eligible) {
+          if (excluded.includes(`${provider.id}:${server.id}`)) continue;
           if (providerSignal.aborted) break;
           try {
             const resolved = await withTimeout(child => provider.resolve(server.id, child), providerSignal);
@@ -231,6 +241,46 @@ export function createApiHandler(options: AppOptions = {}) {
       }
       if (!path.startsWith('/api/v1/')) throw new ApiError('NOT_FOUND', 'Route not found', 404);
       const route = path.slice(8);
+      const localFile = /^downloads\/([a-f0-9-]{36})\/files\/(.+)$/.exec(route);
+      if ((method === 'GET' || method === 'HEAD') && localFile) {
+        await downloads.serve(localFile[1], localFile[2], method, request.headers.range, response, controller.signal);
+        return;
+      }
+      if (method === 'GET' && route === 'downloads') {
+        const result = await downloads.list();
+        const address = request.socket.remoteAddress;
+        result.canPickFolder &&= address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+        return send(response, 200, result);
+      }
+      if (method === 'PUT' && route === 'downloads/location') {
+        if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);
+        const input = await readJson(request);
+        return send(response, 200, await downloads.setLocation((input as { location?: unknown })?.location));
+      }
+      if (method === 'POST' && route === 'downloads/pick-folder') {
+        const address = request.socket.remoteAddress;
+        if (process.platform !== 'win32' || !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address || '')) throw new ApiError('INVALID_REQUEST', 'Choose a host folder using its absolute path.', 400);
+        const script = "Add-Type -AssemblyName System.Windows.Forms; $picker = New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description = 'Choose a Moewatch download folder'; if ($picker.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath) }; $picker.Dispose()";
+        const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-STA', '-Command', script], { windowsHide: true, timeout: 120000 });
+        return send(response, 200, stdout.trim() ? await downloads.setLocation(stdout.trim()) : await downloads.list());
+      }
+      const removeDownload = /^downloads\/([a-f0-9-]{36})$/.exec(route);
+      if (method === 'DELETE' && removeDownload) return send(response, 200, await downloads.remove(removeDownload[1]));
+      if (method === 'POST' && route === 'downloads') {
+        if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);
+        const body = await readJson(request);
+        const input = validatePlayback({ ...(body as object), episode: 1 });
+        const quality = (body as { quality?: unknown })?.quality ?? 720;
+        if (quality !== 480 && quality !== 720 && quality !== 1080) throw new ApiError('INVALID_REQUEST', 'Invalid download quality', 400);
+        const anime = await animeById(input.animeId, controller.signal, true);
+        if (!anime) throw new ApiError('NOT_FOUND', 'Anime not found', 404);
+        const enriched = await enrichEpisodes(anime, controller.signal);
+        const found = await availability(anime, controller.signal);
+        const candidates = ordered(all, input.provider, input.fallback !== false).map(provider => provider.id);
+        const episodes = found.filter(entry => candidates.includes(entry.provider)).flatMap(entry => entry.episodes).filter(episode => episode.kind === 'regular' && episode.audio.includes(input.audio || 'sub')).map(episode => episode.number);
+        if (!episodes.length) throw new ApiError('UNAVAILABLE', 'No episodes are available in your preferred audio.', 503);
+        return send(response, 202, { download: await downloads.enqueue(enriched, episodes, input, quality) });
+      }
       if (method === 'POST' && route === 'discord/presence') {
         if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);
         const body = await readJson(request);
@@ -281,6 +331,8 @@ export function createApiHandler(options: AppOptions = {}) {
       }
       if (method === 'POST' && route === 'playback') {
         const input = validatePlayback(await readJson(request));
+        const local = await downloads.playback(input.animeId, input.episode, input.audio || 'sub').catch(() => undefined);
+        if (local) return send(response, 200, local);
         return send(response, 200, await withTimeout(child => playback(input, child), controller.signal, 25_000));
       }
       const thumbnail = /^anime\/(\d+)\/episodes\/(\d+)\/thumbnail$/.exec(route);
@@ -309,6 +361,8 @@ export function createApiHandler(options: AppOptions = {}) {
       const match = /^anime\/(\d+)(?:\/(availability|episodes)(?:\/(\d+)\/servers)?)?$/.exec(route);
       if (method === 'GET' && match) {
         const id = positive(match[1]);
+        const saved = await downloads.anime(id).catch(() => undefined);
+        if (!match[2] && saved) return send(response, 200, { anime: saved });
         const anime = await animeById(id, controller.signal, Boolean(match[2]));
         if (!match[2]) return send(response, 200, { anime: anime ? await enrichEpisodes(anime, controller.signal) : anime });
         if (!anime) throw new ApiError('NOT_FOUND', 'Anime not found', 404);
@@ -341,7 +395,7 @@ export function createApiHandler(options: AppOptions = {}) {
       send(response, failure.status, { error: { code: failure.code, message: failure.message, provider: failure.provider }, attempts: (error as { attempts?: PlaybackAttempt[] })?.attempts });
     }
   };
-  return Object.assign(handler, { close: () => discord.close() });
+  return Object.assign(handler, { close: () => { discord.close(); void downloads.close().catch(() => {}); } });
 }
 
 export function createServer(options: AppOptions = {}) {

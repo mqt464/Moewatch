@@ -33,6 +33,12 @@ All JSON routes start with `/api/v1`:
 | GET | `/anime/:anilistId/episodes?provider=&audio=` | Normalized provider episodes. |
 | GET | `/anime/:anilistId/episodes/:number/servers?provider=&audio=` | Servers for a canonical regular episode number. |
 | POST | `/playback` | Browser-ready sources, tracks, provider/server identity, expiry and failed attempts. |
+| GET | `/downloads` | Series downloads, episode progress, host folder and storage categories. |
+| POST | `/downloads` | Queue all available regular episodes for an anime. Accepts `animeId`, `audio`, `provider`, `fallback`, and `quality` of 480, 720 or 1080. Returns 202. |
+| DELETE | `/downloads/:id` | Cancel a series download and remove its files. |
+| PUT | `/downloads/location` | Set the host folder using an absolute `location` path. Existing downloads retain their paths. |
+| POST | `/downloads/pick-folder` | Windows folder picker, available only to a loopback client. |
+| GET / HEAD | `/downloads/:id/files/:path` | Manifest-listed local media, subtitles and artwork, with byte ranges for seeking. |
 
 Playback body:
 
@@ -51,6 +57,12 @@ Playback body:
 Responses follow `shared/api.ts`. Errors contain `{ error: { code, message, provider? }, attempts? }`. Ambiguous title matches stay unresolved. An unavailable provider does not discard other providers' availability. Explicit provider episode/server lookups do not silently switch providers. Playback fallback prioritizes the requested server, then other compatible servers, then providers. Disabling fallback confines selection to the chosen provider/server; automatic mode uses the first configured provider.
 
 `GET` and `HEAD /media/:token` are transport routes outside the versioned JSON namespace. Tokens are opaque, server-issued, reusable and expire within two hours or earlier upstream expiry. Clients cannot supply arbitrary proxy URLs. Expired streams can be resolved again with `POST /playback`.
+
+Downloads snapshot audio, preferred quality, provider and fallback at queue time. They never fall back to another language. HLS downloads retain one video variant plus its selected audio, keys, initialization segments and subtitle renditions. Playlists reference local files only. Live playlists and unsupported DRM formats fail with an episode error. Direct MP4/WebM sources use the same queue. A failed media transfer can try another server or provider and restarts that episode's partial files.
+
+The index is written atomically to `MOEWATCH_DATA_DIR/downloads.json`, or `~/.moewatch/downloads.json` by default. The initial media folder is `~/Videos/Moewatch`. Active episodes restart when the server restarts; completed episodes remain available without providers or internet. Cover art, banners, episode thumbnails, subtitles and anime metadata are saved with the download. Artwork failures are reported without discarding a playable episode. The same API and local files work over LAN while the host is running. LAN clients select a folder on the host, not on their own device.
+
+Desktop shared access is off by default. The host-only `/api/v1/shared-access` route reads status and accepts `PUT` with boolean `enabled` or `keepRunning` fields. Enabling it opens an HTTP listener on the desktop port plus one, normally 17847. Its secret link sets an HttpOnly access cookie. Authorized devices use the host account and share app preferences and library data through `GET` and `PUT /api/v1/shared-storage`. Account sign-in and sign-out remain host-only. Sharing settings and app data persist in `MOEWATCH_DATA_DIR/shared-access.json`. Keep the link on a trusted network. The tray menu can reopen or quit the desktop app when background operation is enabled.
 
 ## Boundaries
 

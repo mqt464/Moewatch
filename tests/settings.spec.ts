@@ -35,8 +35,9 @@ test('settings show only essential categories and no filler', async ({ page }) =
   await expect(navigation.getByRole('link')).toHaveText(['Account', 'Playback', 'About']);
   for (const section of ['account', 'playback', 'about']) {
     await page.goto('/settings/' + section);
-    await expect(page.locator('.settings-content h2, .settings-content h3')).toHaveCount(section === 'playback' ? 1 : 0);
+    await expect(page.locator('.settings-content h2, .settings-content h3')).toHaveCount(section === 'playback' ? 2 : 0);
     if (section === 'playback') {
+      await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Provider status' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(0);
     }

@@ -197,5 +197,25 @@ export function createMediaProxy() {
     response.writeHead(status);
     response.end(rewritten);
   }
-  return { issue, handle };
+  async function read(path: string, signal: AbortSignal) {
+    const item = tokens.get(path.replace(/^\/media\//, ''));
+    if (!item || item.expires <= Date.now()) throw new ApiError('SOURCE_EXPIRED', 'Media token expired', 410);
+    const { response, url } = await upstream(new URL(item.url), { ...item.headers, 'Accept-Encoding': 'identity' }, 'GET', signal);
+    if (response.statusCode !== 200) { response.destroy(); throw new ApiError('UPSTREAM_ERROR', `Download source HTTP ${response.statusCode}`, 502); }
+    const type = String(response.headers['content-type'] || 'application/octet-stream');
+    if (url.pathname.toLowerCase().endsWith('.m3u8') || /mpegurl/i.test(type)) {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of response) {
+        size += chunk.length;
+        if (size > 2 * 1024 * 1024) { response.destroy(); throw new ApiError('UNSUPPORTED_MEDIA', 'Playlist too large', 502); }
+        chunks.push(chunk);
+      }
+      const text = preparePlaylist(Buffer.concat(chunks).toString('utf8'), item.playlist);
+      const playlist = await rewritePlaylist(text, url, child => issue(child.href, child.origin === item.origin ? item.headers : crossHostHeaders(item.headers), item.expires, item.playlist));
+      return { body: (async function* () { yield Buffer.from(playlist); })(), type: 'application/vnd.apple.mpegurl', length: Buffer.byteLength(playlist) };
+    }
+    return { body: response as AsyncIterable<Buffer>, type, length: Number(response.headers['content-length']) || 0 };
+  }
+  return { issue, handle, read };
 }

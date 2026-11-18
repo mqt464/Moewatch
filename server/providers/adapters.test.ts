@@ -5,7 +5,7 @@ import { gzipSync } from 'node:zlib';
 import { parseAnikotoSearch, parseAnikotoEpisodes, parseAnikotoServers } from './anikoto';
 import { parseReanimeSearch, parseReanimeEpisodes, parseReanimeServers } from './reanime';
 import { decodeMiruroPipe, parseMiruroEpisodes } from './miruro';
-import { idDecode, idEncode, matching, media } from './common';
+import { idDecode, matching, media } from './common';
 import { decryptMegaplay } from '../extractors/megaplay';
 
 test('AniKoto parses search, sub and dub, and server links', () => {

@@ -22,3 +22,20 @@ Open browser findings are in frontend.spec.ts, loading.spec.ts, polish.spec.ts, 
 Concurrent working-tree edits in CinemaControls.tsx and playback.css were reviewed. They wrap the countdown label in a span and restyle its buttons to match the skip control. No authentication or update logic changes appear in that diff. They remain outside the release commit because they arrived during release preparation.
 
 The native updater cleanup also owns the bundled server as a Tauri resource. Both normal exit and updater cleanup stop that process before replacement. The README now contains only installation, usage and essential development commands.
+
+## Version 0.1.2 audit
+
+Reviewed all pending tracked and new files covering downloads, local playback, shared access, shared storage, tray lifecycle, scrub previews, update controls, styles, documentation and tests.
+
+Fixed during review:
+
+- Consolidated the duplicated shared-storage key allowlist and removed unused imports, unreachable popover branches, unused CSS and an overridden preview declaration.
+- Bounded shared-storage initialization to three seconds so an unavailable host cannot block application startup indefinitely.
+- Rejected malformed shared-storage writes and restored in-memory values when persistence fails.
+- Validated restored download directories and episode numbers before queue processing can remove partial files. Corrupt indexes preserve existing files and report an error.
+- Corrected bandwidth-only HLS variant selection and rejected the invalid zero-length suffix range `bytes=-0`.
+- Removed a redundant filesystem error handler and retained the existing fallback to the nearest accessible ancestor.
+
+Validation: 92 app/API tests and 7 relay tests pass. TypeScript with unused-local and unused-parameter checks passes. The production frontend and compiled Bun sidecar build successfully, and the desktop sidecar smoke test passes. The full Playwright run reports 82 passes and 11 failures in frontend, loading, polish, providers and scroll-fades. These correspond to the existing open browser findings above, including removed controls and old player markup. All download, shared-access, desktop-update, details, player and settings tests pass. Installer and native Rust compilation run in the release workflow because Rust is not installed locally. Interactive installation, tray behavior on a real desktop, real-account sign-in and upgrading an installed client still require manual validation.
+
+Shared access is an opt-in additional LAN listener protected by a secret link and HttpOnly cookie. Connected devices use the host account and can manage shared library data and downloads, including choosing a host folder by path. Sign-in, sign-out, sharing configuration and the native folder picker remain host-only. Use the link only on a trusted network; the LAN listener uses HTTP. Disabling sharing closes its connections.

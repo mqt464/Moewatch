@@ -1,3 +1,5 @@
+import { isTauri } from '@tauri-apps/api/core';
+import { SharedAccess } from './SharedAccess';
 import { DesktopUpdates } from './DesktopUpdates';
 import { ArrowLeft, Film, Info, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -9,6 +11,7 @@ import { providerIds, type AudioPreference, type ProviderStatus } from '../../sh
 import { ScrollArea } from '../ScrollArea';
 import { SettingRow, SettingsButton, SettingsCard, SettingsNotice, SettingsSelect, SettingsToggle } from './controls';
 import { version } from '../../package.json';
+import { DownloadSettings } from '../downloads/DownloadSettings';
 
 const pages = [
   { id: 'account', title: 'Account', icon: UserRound },
@@ -48,8 +51,9 @@ function PlaybackSettings() {
   return <>
     <SettingsCard>
       <SettingRow title="Preferred audio">{binding => <SettingsSelect {...binding} value={preferences.audio} onChange={event => update({ audio: event.target.value as AudioPreference })}><option value="sub">Japanese</option><option value="dub">English dub</option></SettingsSelect>}</SettingRow>
-      <SettingRow title="Subtitles" description="Shown when the video includes subtitle tracks.">{binding => <SettingsToggle {...binding} checked={preferences.subtitles} onChange={subtitles => update({ subtitles })} />}</SettingRow>
+      <SettingRow title="Subtitles">{binding => <SettingsToggle {...binding} checked={preferences.subtitles} onChange={subtitles => update({ subtitles })} />}</SettingRow>
     </SettingsCard>
+    <DownloadSettings />
     <section aria-labelledby="provider-status-heading">
       <h2 id="provider-status-heading" className="settings-provider-heading">Provider status</h2>
       <SettingsCard>
@@ -66,17 +70,19 @@ function PlaybackSettings() {
 export function SettingsPage() {
   const { section = 'account' } = useParams();
   const { error } = usePreferences();
-  const page = pages.find(entry => entry.id === section);
+  const visiblePages = isTauri() ? [...pages.slice(0, 2), { id: 'shared-access', title: 'Shared Access', icon: Info }, ...pages.slice(2)] : pages;
+  const page = visiblePages.find(entry => entry.id === section);
 
   if (section === 'appearance' || section === 'storage') return <Navigate to="/settings" replace />;
 
   return <div className="settings-layout">
     <aside className="settings-sidebar">
       <Link to="/" className="settings-back"><ArrowLeft aria-hidden="true" size={15} />Discover</Link>
-      <ScrollArea className="settings-navigation"><nav aria-label="Settings pages">{pages.map(entry => <NavLink key={entry.id} to={`/settings/${entry.id}`} className={entry.id === section ? 'active' : undefined} aria-current={entry.id === section ? 'page' : undefined} end><entry.icon aria-hidden="true" size={16} />{entry.title}</NavLink>)}</nav></ScrollArea>
+      <ScrollArea className="settings-navigation"><nav aria-label="Settings pages">{visiblePages.map(entry => <NavLink key={entry.id} to={`/settings/${entry.id}`} className={entry.id === section ? 'active' : undefined} aria-current={entry.id === section ? 'page' : undefined} end><entry.icon aria-hidden="true" size={16} />{entry.title}</NavLink>)}</nav></ScrollArea>
     </aside>
     <div className="settings-content">
       <header className="settings-page-heading"><h1>{page?.title || 'Page not found'}</h1></header>
+      {section === 'shared-access' && isTauri() && <SharedAccess />}
       {section === 'account' && <AccountSettings />}
       {section === 'playback' && <PlaybackSettings />}
       {section === 'about' && <SettingsCard>

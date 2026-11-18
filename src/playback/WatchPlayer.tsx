@@ -12,6 +12,7 @@ import { availableEpisodes, useAvailability } from './availability';
 import { canResume, Player } from './Player';
 import './playback.css';
 import { useDiscordPresence } from './discord';
+import { useDownloads } from '../downloads/DownloadsContext';
 
 const noTracks: SubtitleTrack[] = [];
 
@@ -19,7 +20,10 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const { preferences, update } = usePreferences();
   const navigate = useNavigate();
   const location = useLocation();
-  const availability = useAvailability(anime.id);
+  const { data: downloads, loading: downloadsLoading } = useDownloads();
+  const savedEpisodes = downloads?.downloads.filter(job => job.anime.id === anime.id && job.audio === preferences.audio).flatMap(job => job.episodes).filter(episode => episode.status === 'complete') || [];
+  const downloaded = savedEpisodes.find(saved => saved.number === episode)?.playback;
+  const availability = useAvailability(anime.id, !downloadsLoading && !downloaded);
   const [provider, setProvider] = useState<ProviderPreference>(preferences.provider);
   const audio = preferences.audio;
   const [serverId, setServerId] = useState('');
@@ -35,10 +39,11 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const video = useRef<HTMLVideoElement>(null);
   const lastSave = useRef(0);
   const localUrl = useRef('');
-  const episodes = availableEpisodes(availability.data, audio, preferences.providerFallback ? 'auto' : provider);
+  const episodes = [...new Set([...savedEpisodes.map(episode => episode.number), ...availableEpisodes(availability.data, audio, preferences.providerFallback ? 'auto' : provider)])].sort((a, b) => a - b);
   const requestedEpisodes = availableEpisodes(availability.data, audio, provider);
-  const playable = (preferences.providerFallback ? episodes : requestedEpisodes).includes(episode);
-  const source: PlaybackSource | undefined = localSource ? { url: localSource, type: 'mp4' } : playback?.sources[0];
+  const playable = !!downloaded || (preferences.providerFallback ? episodes : requestedEpisodes).includes(episode);
+  const effectivePlayback = downloaded || playback;
+  const source: PlaybackSource | undefined = localSource ? { url: localSource, type: 'mp4' } : effectivePlayback?.sources[0];
   useDiscordPresence(video, anime, episode, source?.url);
   const localEpisodes = anime.episodes ? Array.from({ length: Math.min(anime.episodes, 100000) }, (_, index) => index + 1) : [episode];
   const navigation = localSource || !episodes.length ? localEpisodes : episodes;
@@ -47,7 +52,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
 
   useEffect(() => () => { if (localUrl.current) URL.revokeObjectURL(localUrl.current); }, []);
   useEffect(() => {
-    if (localSource || availability.loading || !playable) { setLoading(false); return; }
+    if (localSource || downloaded || downloadsLoading || availability.loading || !playable) { setLoading(false); return; }
     const controller = new AbortController();
     setLoading(true); setError(''); setPlayback(null);
     resolvePlayback({ animeId: anime.id, episode, provider, audio, fallback: preferences.providerFallback, ...(serverId ? { serverId } : {}) }, controller.signal)
@@ -55,16 +60,16 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
       .catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'No playable source was found.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [anime.id, episode, provider, audio, serverId, preferences.providerFallback, playable, availability.loading, localSource, revision]);
+  }, [anime.id, episode, provider, audio, serverId, preferences.providerFallback, playable, availability.loading, localSource, revision, downloaded?.sources[0]?.url, downloadsLoading]);
 
   const selectedProvider = provider === 'auto' ? playback?.provider : provider;
   useEffect(() => {
     setServers([]);
-    if (!selectedProvider || localSource) return;
+    if (!selectedProvider || localSource || downloaded) return;
     const controller = new AbortController();
     fetchServers(anime.id, episode, selectedProvider, audio, controller.signal).then(result => { if (!controller.signal.aborted) setServers(result.servers); }).catch(() => {});
     return () => controller.abort();
-  }, [anime.id, episode, selectedProvider, audio, localSource]);
+  }, [anime.id, episode, selectedProvider, audio, localSource, !!downloaded]);
 
 
 
@@ -92,7 +97,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   }
 
   const audioAvailable = Object.fromEntries((['sub', 'dub'] as const).map(value => [value,
-    !localSource && !availability.loading && availableEpisodes(availability.data, value, preferences.providerFallback ? 'auto' : provider).includes(episode),
+    !localSource && (!!downloads?.downloads.some(job => job.anime.id === anime.id && job.audio === value && job.episodes.some(saved => saved.number === episode && saved.status === 'complete')) || !availability.loading && availableEpisodes(availability.data, value, preferences.providerFallback ? 'auto' : provider).includes(episode)),
   ])) as Record<AudioPreference, boolean>;
 
   function retry() {
@@ -101,7 +106,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     else setRevision(value => value + 1);
   }
 
-  const findingSource = availability.loading || loading || (playable && !playback && !error && !availability.error);
+  const findingSource = !source && (downloadsLoading || availability.loading || loading || (playable && !effectivePlayback && !error && !availability.error));
   const providerErrors = availability.data?.providers.filter(entry => entry.status === 'error' || entry.status === 'ambiguous') ?? [];
   return <div className="watch-content" aria-label="Episode player">
     <header className="cinema-header"><Link className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
@@ -118,9 +123,9 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     {!availability.loading && !playable && !localSource && !error && !availability.error && <div className="notice" role="status"><p>{providerErrors.length ? 'Some providers could not be checked. Try another provider or retry.' : 'No matching episodes found. Try another audio option, provider, or local file.'}</p><button onClick={retry}>Retry</button></div>}
     {resumeNote && <p className="data-note" role="status">{resumeNote}</p>}
     
-    <CinemaControls nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} tracks={localSource ? noTracks : playback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
+    <CinemaControls nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} sourceType={source?.type} tracks={localSource ? noTracks : effectivePlayback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
     <div className="source-controls" aria-label="Playback sources">
-      <label>Provider<select disabled={Boolean(localSource)} value={provider} onChange={event => chooseProvider(event.target.value as ProviderPreference)}><option value="auto">Automatic</option>{providerIds.map(id => { const available = availableEpisodes(availability.data, audio, id).includes(episode); return <option key={id} value={id} disabled={!available}>{providerNames[id]}{availability.loading ? ' (Checking...)' : !available ? ' (Unavailable)' : ''}</option>; })}</select></label>
+      <label>Provider<select disabled={Boolean(localSource || downloaded)} value={provider} onChange={event => chooseProvider(event.target.value as ProviderPreference)}><option value="auto">Automatic</option>{providerIds.map(id => { const available = availableEpisodes(availability.data, audio, id).includes(episode); return <option key={id} value={id} disabled={!available}>{providerNames[id]}{availability.loading ? ' (Checking...)' : !available ? ' (Unavailable)' : ''}</option>; })}</select></label>
       <label>Server<select disabled={!servers.length || Boolean(localSource)} value={serverId || playback?.server.id || ''} onChange={event => { save(true); setPlayback(null); if (provider === 'auto' && selectedProvider) setProvider(selectedProvider); setServerId(event.target.value); }}><option value="">Automatic</option>{servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}</select></label>
     </div>
 

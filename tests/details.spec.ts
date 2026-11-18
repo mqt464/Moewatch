@@ -40,7 +40,7 @@ test('missing metadata thumbnails load the provider endpoint lazily and keep a f
   await expect(page.locator('.episode-row').nth(2).locator('.episode-placeholder')).toBeVisible();
 });
 
-test('long series titles keep both detail actions inside the hero at every breakpoint', async ({ page }) => {
+test('long series titles keep every detail action inside the hero at every breakpoint', async ({ page }) => {
   await page.route('**/api/v1/**', route => new URL(route.request().url()).pathname.endsWith('/anime/154587')
     ? route.fulfill({ json: { anime: { ...curated[0], title: 'That Time I Got Reincarnated as a Slime: The Slime Diaries Special Edition' } } }) : route.abort());
   for (const width of [390, 480, 481, 600, 601, 768, 1024, 1440]) {
@@ -48,7 +48,7 @@ test('long series titles keep both detail actions inside the hero at every break
     await page.goto('/anime/154587');
     await expect(page.locator('.detail-heading h1')).toContainText('Special Edition');
     const hero = await page.locator('.detail-hero').boundingBox();
-    for (const selector of ['.hero-actions .button', '.hero-actions .list-status']) {
+    for (const selector of ['.hero-actions > .button', '.hero-actions .list-status', '.hero-actions .series-download']) {
       const action = await page.locator(selector).boundingBox();
       expect(action!.y + action!.height, `${selector} clipped at ${width}px`).toBeLessThanOrEqual(hero!.y + hero!.height);
     }

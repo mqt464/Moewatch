@@ -33,3 +33,8 @@ test('volume preferences validate range and preserve silence', () => {
   assert.equal(readPreferences('{"muted":true}').muted, true);
   assert.equal(readPreferences('{"muted":"true"}').muted, false);
 });
+
+test('download quality defaults to 720p and accepts only supported resolutions', () => {
+  for (const quality of [480, 720, 1080]) assert.equal(readPreferences(JSON.stringify({ downloadQuality: quality })).downloadQuality, quality);
+  for (const quality of [0, 2160, '720', null]) assert.equal(readPreferences(JSON.stringify({ downloadQuality: quality })).downloadQuality, 720);
+});

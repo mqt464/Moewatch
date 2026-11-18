@@ -294,3 +294,28 @@ test('source search shows only a spinner, then the mascot when no source exists'
  await expect(page.locator('.buffer-spinner')).toHaveCount(0);
 });
 
+
+test('scrubbing shows a frame and timestamp without moving playback on hover', async ({ page }) => {
+ await fixture(page);
+ const main = page.locator('.player-shell video');
+ const before = await main.evaluate(v => v.currentTime);
+ const timeline = page.locator('.timeline');
+ const bounds = (await timeline.boundingBox())!;
+ await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+ const preview = page.locator('.scrub-preview');
+ await expect(preview).toBeVisible();
+ await expect(preview.locator('span')).toHaveText('0:02');
+ await expect.poll(() => preview.locator('canvas').evaluate(canvas => {
+   const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+   return pixels.some((value, index) => index % 4 !== 3 && value > 0);
+ })).toBe(true);
+ expect(await main.evaluate(v => v.currentTime)).toBe(before);
+ await page.mouse.move(20, 20);
+ await expect(preview).toHaveCount(0);
+ const slider = page.getByRole('slider', { name: 'Playback position' });
+ await slider.focus();
+ await slider.press('ArrowRight');
+ await expect(preview).toBeVisible();
+ await slider.blur();
+ await expect(preview).toHaveCount(0);
+});

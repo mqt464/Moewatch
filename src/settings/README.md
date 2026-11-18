@@ -5,7 +5,8 @@ Follow Rei's settings structure: a narrow category sidebar, one page title, and 
 Only expose settings that provide value. Current categories:
 
 - Account: AniList sign-in, sign-out, and manual sync.
-- Playback: preferred audio, subtitles, and read-only provider configuration status.
+- Playback: preferred audio, subtitles, download quality, host download folder, storage usage, and read-only provider configuration status.
+- Shared access, desktop only: LAN sharing, the connection link, and background operation from the system tray.
 - About: package version and desktop update checks. Updates install only after the user clicks Install update.
 
 Provider status is a heading within Playback, styled like the page title, with no refresh action. Otherwise, never add subheadings, category descriptions, redundant status labels, or save notices. Give options intuitive names. Add descriptions only for information the name cannot convey, and keep them to one or two short lines. Errors and actionable feedback must remain visible.
