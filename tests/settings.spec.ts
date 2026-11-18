@@ -164,7 +164,7 @@ test('legacy playback defaults no longer affect local video', async ({ page }) =
   await expect(page.getByRole('switch', { name: 'Loop video' })).toHaveCount(0);
   await page.evaluate(() => localStorage.setItem('moewatch-settings-v1', JSON.stringify({ volume: 35, playbackSpeed: '1.5', loop: true })));
   await page.goto('/watch/154587/1');
-  await expect(page.getByText('No video source', { exact: true })).toBeVisible();
+  await expect(page.getByText('no source could be found...', { exact: true })).toBeVisible();
   const bytes = await page.evaluate(async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 32;
@@ -203,3 +203,4 @@ test('preferences synchronize between tabs', async ({ page, context }) => {
   await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
   await second.close();
 });
+
