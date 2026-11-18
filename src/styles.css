@@ -154,9 +154,6 @@ html.no-view-transitions .page-scene { animation: page-enter 160ms var(--ease-ou
 .progress-track > span { display: block; height: 100%; background: var(--pink); transition: width var(--motion-fast) linear; }
 .poster-playback { position: absolute; inset: auto 0 0; padding: 28px 10px 10px; background: linear-gradient(transparent, #000c); }
 .poster-episode { display: block; color: #fff; font-size: 12px; font-weight: 600; line-height: 1.5; margin-bottom: 3px; }
-.footer { display: flex; justify-content: flex-end; border-top: 1px solid #201d20; padding-block: 22px; color: #9c9299; font-size: 11px; }
-.footer a { min-height: 44px; display: flex; align-items: center; }
-.footer a:hover { color: var(--pink); }
 
 .page-content { min-height: 80vh; padding-top: 138px; padding-bottom: 80px; }
 .page-title { font-size: 36px; font-weight: 600; letter-spacing: -1px; margin-bottom: 32px; }
@@ -197,8 +194,7 @@ html.no-view-transitions .page-scene { animation: page-enter 160ms var(--ease-ou
 .list-status-arrow { position: absolute; inset: 0 0 0 auto; display: flex; width: 30px; align-items: center; justify-content: center; border-radius: 0 5px 5px 0; background: #ffffff08; pointer-events: none; }
 .list-status-compact { width: 170px; }
 @media (max-width: 480px) { .hero-actions { flex-wrap: wrap; } .saved-poster .list-status select { font-size: 12px; padding-left: 8px; padding-right: 36px; } .saved-poster .list-status-arrow { width: 28px; } }
-.art-fallback { display: flex; align-items: center; justify-content: center; color: #7f6874; background: #191519; }
-.art-fallback > svg { width: 30px; height: 30px; }
+.art-fallback { display: block; background: #292929; }
 
 .detail-hero { height: 510px; position: relative; isolation: isolate; overflow: hidden; }
 .detail-heading { padding-top: 119px; }
@@ -475,9 +471,7 @@ select { min-height: 44px; border: 1px solid #383037; border-radius: 6px; paddin
   .detail-heading { padding-top: 140px; }
   .detail-hero { height: 385px; }
 }
-body:has(.detail-hero) footer { padding-block: 24px; min-height: 0; }
 .detail-heading .metadata-chip { font-size: 13px; min-height: 29px; }
-body:has(.detail-hero) .footer { border-top: 0; font-size: 13px; padding-block: 16px; }
 @media (max-width: 600px) {
   .episodes-grid { grid-template-columns: 1fr; gap: 20px; }
   .episode-row { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 14px; align-items: center; }

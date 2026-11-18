@@ -4,7 +4,7 @@ import { DocumentScrollbar } from './DocumentScrollbar';
 import React, { Component, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider, Link as RouterLink, NavLink as RouterNavLink, Outlet, useLocation, useParams, useSearchParams, type LinkProps, type NavLinkProps } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Film, Info, Play, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Info, Play, Search, X } from 'lucide-react';
 import { Skeleton, SkeletonBox, SkulletProvider } from 'skullet/react';
 import { cachedAnime, curated, fetchAnime, fetchCatalog, type Anime } from './catalog';
 import { heroFraming } from './artwork';
@@ -46,7 +46,7 @@ function Artwork({ src, alt = '', className = '', eager = false, fallback }: { s
   useEffect(() => { revealImage(); }, [src]);
   const failed = failedSource === src || !src;
   const loading = !failed && loadedSource !== src;
-  return <div className={`artwork-frame ${className ? `${className}-frame` : ''}`} aria-busy={loading || undefined}>{failed ? fallback ?? <span className="art-fallback" role="img" aria-label={alt || 'Artwork unavailable'}><Film aria-hidden="true" /></span> : <img key={src} ref={image} className={`artwork ${loadedSource === src ? 'is-ready' : 'is-loading'} ${className}`} src={src} alt={alt} width={600} height={900} fetchPriority={eager ? 'high' : undefined} loading={eager ? 'eager' : 'lazy'} decoding="async" onLoad={revealImage} onError={() => setFailedSource(src)} />}{loading && <SkeletonBox className="artwork-loading" width="100%" height="100%" radius="inherit" />}</div>;
+  return <div className={`artwork-frame ${className ? `${className}-frame` : ''}`} aria-busy={loading || undefined}>{failed ? fallback ?? <span className="art-fallback" role="img" aria-label={alt || 'Artwork unavailable'}></span> : <img key={src} ref={image} className={`artwork ${loadedSource === src ? 'is-ready' : 'is-loading'} ${className}`} src={src} alt={alt} width={600} height={900} fetchPriority={eager ? 'high' : undefined} loading={eager ? 'eager' : 'lazy'} decoding="async" onLoad={revealImage} onError={() => setFailedSource(src)} />}{loading && <SkeletonBox className="artwork-loading" width="100%" height="100%" radius="inherit" />}</div>;
 }
 
 function Header() {
@@ -331,9 +331,6 @@ function ErrorPage({ title = 'Page not found', text, retry }: { title?: string; 
   </div>;
 }
 
-function Footer() {
-  return <footer className="footer content-wrap"><a href="https://anilist.co" target="_blank" rel="noreferrer">Metadata by AniList</a></footer>;
-}
 
 function App() {
   const { preferences } = usePreferences();
@@ -342,7 +339,7 @@ function App() {
   useEffect(() => setRemoved(null), [user?.id]);
   const location = useLocation();
   useLayoutEffect(() => { window.scrollTo({ top: 0 }); const main = document.getElementById('main'); main?.focus({ preventScroll: true }); document.title = `${location.pathname.startsWith('/settings') ? 'Settings' : location.pathname === '/list' ? 'My List' : location.pathname === '/browse' ? 'Search' : 'Discover'} — Moewatch`; }, [location.pathname]);
-  return <SkulletProvider mode="dark" theme={{ dark: { base: '#211b21', highlight: '#3b2d37' }, animation: preferences.reduceMotion ? 'none' : 'shimmer' }} reveal={{ hold: 0, duration: preferences.reduceMotion ? 0 : 160 }}><LibraryContext.Provider value={{ library, toggle: anime => { setRemoved(library.saved.some(item => item.id === anime.id) ? anime : null); toggle(anime); }, update }}>{!location.pathname.startsWith('/watch/') && <Header />}<main id="main" className={location.pathname.startsWith('/watch/') ? 'watch-main' : undefined} tabIndex={-1}><div className="page-scene" key={location.pathname}><Outlet /></div><DocumentScrollbar /></main>{storageError && <div className="storage-warning" role="status">Browser storage is unavailable. Your list and history won’t survive a refresh.</div>}{removed && <div className="undo-toast" role="status"><span>Removed from My List</span><button onClick={() => { if (!library.saved.some(item => item.id === removed.id)) toggle(removed); setRemoved(null); }}>Undo</button><button className="icon-button" aria-label="Dismiss notification" onClick={() => setRemoved(null)}><X aria-hidden="true" size={16} /></button></div>}{!location.pathname.startsWith('/watch/') && <Footer />}</LibraryContext.Provider></SkulletProvider>;
+  return <SkulletProvider mode="dark" theme={{ dark: { base: '#211b21', highlight: '#3b2d37' }, animation: preferences.reduceMotion ? 'none' : 'shimmer' }} reveal={{ hold: 0, duration: preferences.reduceMotion ? 0 : 160 }}><LibraryContext.Provider value={{ library, toggle: anime => { setRemoved(library.saved.some(item => item.id === anime.id) ? anime : null); toggle(anime); }, update }}>{!location.pathname.startsWith('/watch/') && <Header />}<main id="main" className={location.pathname.startsWith('/watch/') ? 'watch-main' : undefined} tabIndex={-1}><div className="page-scene" key={location.pathname}><Outlet /></div><DocumentScrollbar /></main>{storageError && <div className="storage-warning" role="status">Browser storage is unavailable. Your list and history won’t survive a refresh.</div>}{removed && <div className="undo-toast" role="status"><span>Removed from My List</span><button onClick={() => { if (!library.saved.some(item => item.id === removed.id)) toggle(removed); setRemoved(null); }}>Undo</button><button className="icon-button" aria-label="Dismiss notification" onClick={() => setRemoved(null)}><X aria-hidden="true" size={16} /></button></div>}</LibraryContext.Provider></SkulletProvider>;
 }
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { failed: boolean }> {
