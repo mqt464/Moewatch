@@ -12,3 +12,11 @@ Reviewed the entire initial source tree, authentication relay, API trust boundar
 - Provider availability depends on external services. WebView2 codec support can differ from a full browser.
 
 Validation: TypeScript and Vite production build, compiled Bun sidecar, 82 app/API tests and 7 relay tests pass locally. Windows native compilation and installer generation run in the release workflow. Interactive installer, real-account sign-in and upgrade from a previous version require manual validation. There is no previous desktop release for an end-to-end update test.
+
+## Expanded browser audit
+
+The full Playwright run completed with 74 passes and 11 failures. Focused Settings and desktop updater coverage passes, including consent before download/install. Nine crypto/extractor tests also pass under the Bun runtime used by the desktop sidecar. The compiled sidecar smoke test serves the home page, deep links and configured account status successfully. The relay TypeScript check and deployed health check pass.
+
+Open browser findings are in frontend.spec.ts, loading.spec.ts, polish.spec.ts, providers.spec.ts and scroll-fades.spec.ts. Several assertions target removed controls or old copy, including Preferred provider, Appearance and No video source. Other failures concern buffering, reduced motion, mobile fades, hero positioning and list removal. These need individual triage; this release does not claim the entire browser suite passes.
+
+Concurrent working-tree edits in CinemaControls.tsx and playback.css were reviewed. They wrap the countdown label in a span and restyle its buttons to match the skip control. No authentication or update logic changes appear in that diff. They remain outside the release commit because they arrived during release preparation.
