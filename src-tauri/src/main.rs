@@ -7,6 +7,9 @@ struct Server(Arc<Mutex<Option<CommandChild>>>);
 impl Server {
  fn stop(&self) { if let Some(child) = self.0.lock().unwrap().take() { let _ = child.kill(); } }
 }
+impl Drop for Server {
+ fn drop(&mut self) { self.stop(); }
+}
 impl tauri::Resource for Server {
  fn close(self: Arc<Self>) { self.stop(); }
 }
