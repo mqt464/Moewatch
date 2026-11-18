@@ -45,7 +45,12 @@ test('poster loading and failure keep the same footprint without extra metadata'
   await expect(image).toHaveClass(/is-ready/);
   expect(await poster.boundingBox()).toEqual(before);
   await expect(featured.locator('.poster p')).toHaveCount(0);
-  await expect(featured.locator('.poster-image .art-fallback')).toHaveCount(1);
+  const fallback = featured.locator('.poster-image .art-fallback');
+  await expect(fallback).toHaveCount(1);
+  await expect(fallback.locator('svg')).toHaveCount(0);
+  await expect(fallback).toHaveCSS('background-color', 'rgb(41, 41, 41)');
+  await expect(page.locator('footer')).toHaveCount(0);
+  await expect(page.getByText('Metadata by AniList')).toHaveCount(0);
 });
 
 test('series and watch navigation run short native transitions without runtime errors', async ({ page }) => {
