@@ -1,0 +1,754 @@
+[
+  {
+    "id": 154587,
+    "popularity": 499746,
+    "title": "Frieren: Beyond Journey’s End",
+    "romaji": "Sousou no Frieren",
+    "description": "The adventure is over but life goes on for an elf mage just beginning to learn what living is all about. Elf mage Frieren and her courageous fellow adventurers have defeated the Demon King and brought peace to the land. But Frieren will long outlive the rest of her former party. How will she come to understand what life means to the people around her? Decades after their victory, the funeral of one her friends confronts Frieren with her own near immortality. Frieren sets out to fulfill the last wishes of her comrades and finds herself beginning a new adventure…\n\n(Source: Crunchyroll)",
+    "cover": "/artwork/154587-cover.jpg",
+    "banner": "/artwork/154587-banner.jpg",
+    "year": 2023,
+    "format": "TV",
+    "episodes": 28,
+    "duration": 24,
+    "score": 90,
+    "genres": [
+      "Adventure",
+      "Drama",
+      "Fantasy"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "MADHOUSE"
+    ],
+    "characters": [
+      {
+        "name": "Frieren",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b176754-PCnpqIOkjhFk.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Fern",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b183965-uGFohBjlFoTp.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Stark",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b184313-CQl6GSt4RSny.jpg",
+        "role": "MAIN"
+      },
+      {
+        "name": "Heiter",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b184310-tiXvrq4FINXP.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Himmel",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b184311-wQFySqYXEqf1.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Eisen",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b184312-kxd5H6iOHIq4.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Sein",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b205177-hLV4nVQjoBIC.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Aura",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b219110-LEB5T4oG0gel.png",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 169811,
+        "title": "The Brave",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx169811-tsuH0SJVJy40.jpg",
+        "relation": "CHARACTER"
+      },
+      {
+        "id": 170068,
+        "title": "Sousou no Frieren: ●● no Mahou",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx170068-ijY3tCP8KoWP.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 175691,
+        "title": "Sunny",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx175691-lTfPc3P63Uyx.png",
+        "relation": "OTHER"
+      },
+      {
+        "id": 182255,
+        "title": "Frieren: Beyond Journey’s End Season 2",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx182255-butzrqd4I0aC.jpg",
+        "relation": "SEQUEL"
+      },
+      {
+        "id": 189513,
+        "title": "Sousou no Frieren: ●● no Mahou Part 2",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx189513-1R9Sryve0K53.png",
+        "relation": "SIDE_STORY"
+      }
+    ]
+  },
+  {
+    "id": 1,
+    "popularity": 476939,
+    "title": "Cowboy Bebop",
+    "romaji": "Cowboy Bebop",
+    "description": "Enter a world in the distant future, where Bounty Hunters roam the solar system. Spike and Jet, bounty hunting partners, set out on journeys in an ever struggling effort to win bounty rewards to survive.\n\nWhile traveling, they meet up with other very interesting people. Could Faye, the beautiful and ridiculously poor gambler, Edward, the computer genius, and Ein, the engineered dog be a good addition to the group?",
+    "cover": "/artwork/1-cover.jpg",
+    "banner": "/artwork/1-banner.jpg",
+    "year": 1998,
+    "format": "TV",
+    "episodes": 26,
+    "duration": 24,
+    "score": 86,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Drama",
+      "Sci-Fi"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "Sunrise"
+    ],
+    "characters": [
+      {
+        "name": "Spike Spiegel",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b1-ChxaldmieFlQ.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Faye Valentine",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b2-0Iszg6Izgt4p.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Jet Black",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b3-JjH9Si9UM1NZ.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Edward Wong Hau Pepelu Tivrusky IV",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b16-80wd87nl1Rue.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Ein",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/4.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Vicious",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b2734-aglO8RKNVxnn.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Julia",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b2735-0NRiXHK4PSWs.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Grencia Mars Elijah Guo Eckener",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b2736-0Eoluq9UxXu4.png",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 5,
+        "title": "Cowboy Bebop: The Movie - Knockin' on Heaven's Door",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx5-NozHwXWdNLCz.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 17205,
+        "title": "Ein's Summer Vacation",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx17205-Dk5nmaKD7hPM.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 4037,
+        "title": "Cowboy Bebop: Yoseatsume Blues",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx4037-zpDbjycoZhNI.png",
+        "relation": "SUMMARY"
+      }
+    ]
+  },
+  {
+    "id": 161645,
+    "popularity": 345395,
+    "title": "The Apothecary Diaries",
+    "romaji": "Kusuriya no Hitorigoto",
+    "description": "Maomao lived a peaceful life with her apothecary father. Until one day, she’s sold as a lowly servant to the emperor’s palace. But she wasn’t meant for a compliant life among royalty. So when imperial heirs fall ill, she decides to step in and find a cure! This catches the eye of Jinshi, a handsome palace official who promotes her. Now, she’s making a name for herself solving medical mysteries!\n\n(Source: Crunchyroll)",
+    "cover": "/artwork/161645-cover.jpg",
+    "banner": "/artwork/161645-banner.jpg",
+    "year": 2023,
+    "format": "TV",
+    "episodes": 24,
+    "duration": 23,
+    "score": 88,
+    "genres": [
+      "Drama",
+      "Mystery"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "OLM",
+      "TOHO animation STUDIO"
+    ],
+    "characters": [
+      {
+        "name": "Maomao",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b126824-MqsCncTO1qpv.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Jinshi",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b127278-0qCQciTkPOMS.jpg",
+        "role": "MAIN"
+      },
+      {
+        "name": "Koutei",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b144110-bAnH9gjergcc.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Riishu",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b156764-aEbQtGaJ9PzZ.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Aaduo",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b156765-HPRJaEN81jSa.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Rifa",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b156766-3DxfskkEqNvc.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Gyokuyou",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b156767-6ncEJKdsEQ3O.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Lakan",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b232926-YIzdIzMMGcac.jpg",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 170508,
+        "title": "Maomao no Hitorigoto",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx170508-72GLTka7NHeF.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 176301,
+        "title": "The Apothecary Diaries Season 2",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx176301-TIGmldLffQGX.jpg",
+        "relation": "SEQUEL"
+      }
+    ]
+  },
+  {
+    "id": 5114,
+    "popularity": 744947,
+    "title": "Fullmetal Alchemist: Brotherhood",
+    "romaji": "Hagane no Renkinjutsushi: FULLMETAL ALCHEMIST",
+    "description": "\"In order for something to be obtained, something of equal value must be lost.\"\n\nAlchemy is bound by this Law of Equivalent Exchange—something the young brothers Edward and Alphonse Elric only realize after attempting human transmutation: the one forbidden act of alchemy. They pay a terrible price for their transgression—Edward loses his left leg, Alphonse his physical body. It is only by the desperate sacrifice of Edward's right arm that he is able to affix Alphonse's soul to a suit of armor. Devastated and alone, it is the hope that they would both eventually return to their original bodies that gives Edward the inspiration to obtain metal limbs called \"automail\" and become a state alchemist, the Fullmetal Alchemist.\n\nThree years of searching later, the brothers seek the Philosopher's Stone, a mythical relic that allows an alchemist to overcome the Law of Equivalent Exchange. Even with military allies Colonel Roy Mustang, Lieutenant Riza Hawkeye, and Lieutenant Colonel Maes Hughes on their side, the brothers find themselves caught up in a nationwide conspiracy that leads them not only to the true nature of the elusive Philosopher's Stone, but their country's murky history as well. In between finding a serial killer and racing against time, Edward and Alphonse must ask themselves if what they are doing will make them human again... or take away their humanity.\n\n(Source: MAL Rewrite)",
+    "cover": "/artwork/5114-cover.jpg",
+    "banner": "/artwork/5114-banner.jpg",
+    "year": 2009,
+    "format": "TV",
+    "episodes": 64,
+    "duration": 25,
+    "score": 90,
+    "genres": [
+      "Action",
+      "Adventure",
+      "Drama",
+      "Fantasy"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "bones"
+    ],
+    "characters": [
+      {
+        "name": "Edward Elric",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b11-TA5Nuk7EDUZG.jpg",
+        "role": "MAIN"
+      },
+      {
+        "name": "Alphonse Elric",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b12-tCKu8yK5kFL5.jpg",
+        "role": "MAIN"
+      },
+      {
+        "name": "Winry Rockbell",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/63-xloedtYxiJ2E.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Pinako Rockbell",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b65-Yw7j20Y9uewh.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Scar",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b66-bLbGWXrmDqfV.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Izumi Curtis",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b67-ggB3aC6DzQqB.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Roy Mustang",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b68-moBLY2WO2am3.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Maes Hughes",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b69-MRetSG8Qevvu.png",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 6421,
+        "title": "Fullmetal Alchemist: Brotherhood OVA Collection",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/6421.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 9135,
+        "title": "Fullmetal Alchemist: The Sacred Star of Milos",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx9135-nPvbvO7QCx7L.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 121,
+        "title": "Fullmetal Alchemist",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx121-zjmixZ428Mwv.png",
+        "relation": "ALTERNATIVE"
+      },
+      {
+        "id": 7902,
+        "title": "Fullmetal Alchemist: Brotherhood: 4-Koma Theater",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/7902.jpg",
+        "relation": "SPIN_OFF"
+      },
+      {
+        "id": 195600,
+        "title": "Daemons of the Shadow Realm",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx195600-moI0UFArtOme.jpg",
+        "relation": "CHARACTER"
+      }
+    ]
+  },
+  {
+    "id": 457,
+    "popularity": 197951,
+    "title": "MUSHI-SHI",
+    "romaji": "Mushishi",
+    "description": "Neither good nor evil, they are life in its purest form. Vulgar and strange, they have inspired fear in humans since the dawn of time and have, over the ages, come to be known as \"mushi.\" The stories of the Mushi and the people they affect are all linked together by a traveling Mushi-shi, or \"Mushi Master,\" who seeks rare Mushi sightings and uses his shaman-like knowledge of Mushi to help the affected people.\n\nWhat are the Mushi and what do they want?\n\n(Source: Funimation)",
+    "cover": "/artwork/457-cover.jpg",
+    "banner": "/artwork/457-banner.jpg",
+    "year": 2005,
+    "format": "TV",
+    "episodes": 26,
+    "duration": 25,
+    "score": 85,
+    "genres": [
+      "Adventure",
+      "Fantasy",
+      "Mystery",
+      "Psychological",
+      "Slice of Life",
+      "Supernatural"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "Artland"
+    ],
+    "characters": [
+      {
+        "name": "Ginko",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b425-khK03T5n9Umq.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Adashino",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b4071-RXY16EmCYjVr.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Nui",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b5167-DreoKnv7XdOS.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Jin",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b9972-HaxfJjEn6DSI.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Tanyuu Karibusa",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b13714-WP9UOIjZrD8j.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Kisuke",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b16808-hfwuR6P9Neq9.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Setsu",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b16809-jZxCGqTSbVIE.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Miharu",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b16810-Ub2VKAhIZfRI.png",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 20526,
+        "title": "MUSHI-SHI OVA",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20526-PmuD69J3rkDF.png",
+        "relation": "SEQUEL"
+      }
+    ]
+  },
+  {
+    "id": 153518,
+    "popularity": 233668,
+    "title": "Delicious in Dungeon",
+    "romaji": "Dungeon Meshi",
+    "description": "When young adventurer Laios and his company are attacked and soundly thrashed by a dragon deep in a dungeon, the party loses all its money and provisions...and a member! They're eager to go back and save her, but there is just one problem: If they set out with no food or coin to speak of, they're sure to starve on the way! But Laios comes up with a brilliant idea: \"Let's eat the monsters!\" Slimes, basilisks, and even dragons...none are safe from the appetites of these dungeon-crawling gourmands! \n\n(Source: Yen Press)\n\nNote: A world premiere screening of Episode 1 was shown in the Studio TRIGGER panel at Anime Expo on July 1, 2023.",
+    "cover": "/artwork/153518-cover.jpg",
+    "banner": "/artwork/153518-banner.jpg",
+    "year": 2024,
+    "format": "TV",
+    "episodes": 24,
+    "duration": 25,
+    "score": 85,
+    "genres": [
+      "Adventure",
+      "Comedy",
+      "Fantasy"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "TRIGGER"
+    ],
+    "characters": [
+      {
+        "name": "Laios Thorden",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b126818-vWeIwxSERSHd.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Marcille Donato",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b127292-MAWgxbS0Cbrs.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Senshi",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b127689-SC65fBVrUx8v.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Chilchuck Tims",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b130509-NFZ7xFt1kLqd.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Toshirou Nakamoto",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b130506-S5gp6sZyi8q9.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Izutsumi",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b130507-iB88aMlQPuMz.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Falin Thorden",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b130508-ZaP30snJccry.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Kabru",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b135286-htqjXWhhjWSm.png",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 111516,
+        "title": "Delicious in Dungeon CM",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx111516-JRzOxTmZfwke.jpg",
+        "relation": "OTHER"
+      },
+      {
+        "id": 158627,
+        "title": "Dungeon Meshi: Senshi no Kantan Cooking!",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/b158627-0MPil8prYOQu.jpg",
+        "relation": "OTHER"
+      },
+      {
+        "id": 178031,
+        "title": "Delicious in Dungeon Season 2",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx178031-XNWYP6Qf18bB.png",
+        "relation": "SEQUEL"
+      }
+    ]
+  },
+  {
+    "id": 16498,
+    "popularity": 1079782,
+    "title": "Attack on Titan",
+    "romaji": "Shingeki no Kyojin",
+    "description": "Several hundred years ago, humans were nearly exterminated by titans. Titans are typically several stories tall, seem to have no intelligence, devour human beings and, worst of all, seem to do it for the pleasure rather than as a food source. A small percentage of humanity survived by walling themselves in a city protected by extremely high walls, even taller than the biggest of titans.\n\n\r\nFlash forward to the present and the city has not seen a titan in over 100 years. Teenage boy Eren and his foster sister Mikasa witness something horrific as the city walls are destroyed by a colossal titan that appears out of thin air. As the smaller titans flood the city, the two kids watch in horror as their mother is eaten alive. Eren vows that he will murder every single titan and take revenge for all of mankind.\n\n\r\n(Source: MangaHelpers)",
+    "cover": "/artwork/16498-cover.jpg",
+    "banner": "/artwork/16498-banner.jpg",
+    "year": 2013,
+    "format": "TV",
+    "episodes": 25,
+    "duration": 24,
+    "score": 85,
+    "genres": [
+      "Action",
+      "Drama",
+      "Fantasy",
+      "Mystery"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "WIT STUDIO"
+    ],
+    "characters": [
+      {
+        "name": "Mikasa Ackerman",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b40881-F3gr1PkreDvj.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Eren Yeager",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b40882-dsj7IP943WFF.jpg",
+        "role": "MAIN"
+      },
+      {
+        "name": "Armin Arlert",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b46494-g7xYYuBtYPnO.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Levi",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b45627-CR68RyZmddGG.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Sasha Blouse",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b45887-QPtJH0KwqthW.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Reiner Braun",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b46484-P6A2GjNQn49F.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Connie Springer",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/n46486-izhPjzut6WCZ.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Bertolt Hoover",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b46488-wm6HvkdkHoZu.jpg",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 20691,
+        "title": "Attack on Titan Part I: Crimson Bow and Arrow",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20691-dnv0rkpbgBDJ.png",
+        "relation": "ALTERNATIVE"
+      },
+      {
+        "id": 20692,
+        "title": "Attack on Titan Part II: Wings of Freedom",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20692-fSDEpfDtDg9u.png",
+        "relation": "ALTERNATIVE"
+      },
+      {
+        "id": 20958,
+        "title": "Attack on Titan Season 2",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20958-HuFJyr54Mmir.jpg",
+        "relation": "SEQUEL"
+      },
+      {
+        "id": 21281,
+        "title": "Attack on Titan: Junior High",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/b21281-GwCKcZii6fVf.jpg",
+        "relation": "SPIN_OFF"
+      },
+      {
+        "id": 18397,
+        "title": "Attack on Titan OVA",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx18397-AnpwhLkSjYL1.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 119113,
+        "title": "Attack on Titan ~Chronicle~",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx119113-IzVI5oZ0og8O.jpg",
+        "relation": "SUMMARY"
+      },
+      {
+        "id": 20811,
+        "title": "Attack on Titan: No Regrets",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20811-IvXLdxZkYNcP.jpg",
+        "relation": "PREQUEL"
+      },
+      {
+        "id": 99634,
+        "title": "Attack on Titan: Lost Girls",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/nx99634-9u4hdvWwmC2s.png",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 19391,
+        "title": "Attack on Titan Picture Drama",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/19391.jpg",
+        "relation": "OTHER"
+      },
+      {
+        "id": 143391,
+        "title": "Chiyuki no Fashion Check",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx143391-iFj8UKciDab3.png",
+        "relation": "CHARACTER"
+      }
+    ]
+  },
+  {
+    "id": 20464,
+    "popularity": 594088,
+    "title": "HAIKYU!!",
+    "romaji": "Haikyuu!!",
+    "description": "Inspired after watching a volleyball ace nicknamed \"Little Giant\" in action, small-statured Shouyou Hinata revives the volleyball club at his middle school. The newly-formed team even makes it to a tournament; however, their first match turns out to be their last when they are brutally squashed by the \"King of the Court,\" Tobio Kageyama. Hinata vows to surpass Kageyama, and so after graduating from middle school, he joins Karasuno High School's volleyball team—only to find that his sworn rival, Kageyama, is now his teammate.\n\nThanks to his short height, Hinata struggles to find his role on the team, even with his superior jumping power. Surprisingly, Kageyama has his own problems that only Hinata can help with, and learning to work together appears to be the only way for the team to be successful. Based on Haruichi Furudate's popular shounen manga of the same name, Haikyuu!! is an exhilarating and emotional sports comedy following two determined athletes as they attempt to patch a heated rivalry in order to make their high school volleyball team the best in Japan.\n\n[Written by MAL Rewrite]",
+    "cover": "/artwork/20464-cover.jpg",
+    "banner": "/artwork/20464-banner.jpg",
+    "year": 2014,
+    "format": "TV",
+    "episodes": 25,
+    "duration": 24,
+    "score": 83,
+    "genres": [
+      "Comedy",
+      "Drama",
+      "Sports"
+    ],
+    "status": "FINISHED",
+    "studios": [
+      "Production I.G"
+    ],
+    "characters": [
+      {
+        "name": "Shouyou Hinata",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b64769-WoWlCMLLgJ14.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Tobio Kageyama",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b64771-BuCVs7B8bBdh.png",
+        "role": "MAIN"
+      },
+      {
+        "name": "Koushi Sugawara",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b67321-cxP7NdI0JC3H.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Daichi Sawamura",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b67323-yFbLDAfJ5ysG.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Ryuunosuke Tanaka",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b67325-yPkbZJkofp5w.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Yuu Nishinoya",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b67327-zQb1dlC7joPb.jpg",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Kei Tsukishima",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/b67329-k7mDdqQ6rJ4w.png",
+        "role": "SUPPORTING"
+      },
+      {
+        "name": "Chikara Ennoshita",
+        "image": "https://s4.anilist.co/file/anilistcdn/character/large/n67331-skTD3AJ7jrWr.png",
+        "role": "SUPPORTING"
+      }
+    ],
+    "related": [
+      {
+        "id": 21120,
+        "title": "Haikyu!! the Movie: The End and the Beginning",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21120-x1TAu6HfHnyr.jpg",
+        "relation": "SUMMARY"
+      },
+      {
+        "id": 21244,
+        "title": "Haikyuu!! the Movie: The Winner and the Loser",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21244-xvjWi4fV0qkw.png",
+        "relation": "SUMMARY"
+      },
+      {
+        "id": 20992,
+        "title": "HAIKYU!! 2nd Season",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20992-aHgNbcalVEqk.png",
+        "relation": "SEQUEL"
+      },
+      {
+        "id": 115217,
+        "title": "Haikyuu!! Ningyou Anime",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx115217-5Q8RImxnZc9a.png",
+        "relation": "OTHER"
+      },
+      {
+        "id": 20884,
+        "title": "HAIKYU!!: Lev Appears!",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20884-5U9SNWxDJBeT.jpg",
+        "relation": "SIDE_STORY"
+      },
+      {
+        "id": 107263,
+        "title": "Haikyuu!! Quest Picture Drama",
+        "cover": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx107263-oF8OnpCOHFXd.jpg",
+        "relation": "OTHER"
+      }
+    ]
+  }
+]

@@ -1,0 +1,43 @@
+{
+  "name": "moewatch",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "vite --host 0.0.0.0 --port 5173 --strictPort",
+    "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --import tsx --test src/*.test.ts server/tests/*.test.ts server/providers/*.test.ts",
+    "api": "node --import tsx server/index.ts",
+    "relay:test": "node --import tsx --test auth-relay/*.test.ts",
+    "relay:deploy": "npx --yes wrangler@4.163.0 deploy --config auth-relay/wrangler.jsonc",
+    "desktop:prepare": "npm run build && node scripts/desktop-prepare.mjs",
+    "desktop:build": "tauri build",
+    "desktop:dev": "npm run desktop:prepare && tauri dev --no-watch"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-opener": "^2.7.3",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.1",
+    "hls.js": "^1.7.4",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.0",
+    "skullet": "^0.0.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.1",
+    "@tauri-apps/cli": "^2.12.5",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "moewatch-signin",
+  "account_id": "75e5e81957004bff427c601f6d1f773a",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-17",
+  "workers_dev": true,
+  "observability": { "enabled": false },
+  "assets": { "directory": "./assets", "binding": "ASSETS", "run_worker_first": true },
+  "vars": { "ANILIST_CLIENT_ID": "57200", "RELAY_PUBLIC_ORIGIN": "https://moewatch-signin.mqt464.workers.dev", "TURNSTILE_SITE_KEY": "0x4AAAAAAGEr9CMy2BOSOq2y" },
+  "durable_objects": { "bindings": [{ "name": "SIGNIN", "class_name": "SigninCoordinator" }], "code_update_strategy": { "mode": "immediate" } },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SigninCoordinator"] }]
+}

@@ -1,0 +1,16 @@
+{
+  "identifier": "desktop",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:17846"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:allow-restart", {"identifier":"opener:allow-open-url","allow":[{"url":"https://moewatch-signin.mqt464.workers.dev/*"},{"url":"https://anilist.co/*"}]}
+  ]
+}

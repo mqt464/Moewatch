@@ -1,0 +1,60 @@
+.scroll-frame { position: relative; isolation: isolate; min-width: 0; min-height: 0; }
+.scroll-area { width: 100%; height: 100%; overflow: auto; }
+.scroll-fades { position: absolute; z-index: 1; inset: 0; pointer-events: none; }
+.document-scroll-fades { position: fixed; z-index: 9; }
+.scroll-fades > span { position: absolute; opacity: 0; pointer-events: none; transition: opacity var(--motion-page, 220ms) ease; }
+.scroll-fade-top { top: 0; right: 0; left: 0; height: var(--scroll-edge-fade-top, 24px); background: linear-gradient(var(--scroll-area-background, transparent), transparent); }
+.scroll-fade-bottom { bottom: 0; right: 0; left: 0; height: var(--scroll-edge-fade-bottom, 44px); background: linear-gradient(transparent, var(--scroll-area-background, transparent)); }
+.scroll-fade-left { top: 0; bottom: 0; left: 0; width: var(--scroll-edge-fade-left, 24px); background: linear-gradient(to right, var(--scroll-area-background, transparent), transparent); }
+.scroll-fade-right { top: 0; bottom: 0; right: 0; width: var(--scroll-edge-fade-right, 44px); background: linear-gradient(to left, var(--scroll-area-background, transparent), transparent); }
+.scroll-fades[data-top=true] > .scroll-fade-top,
+.scroll-fades[data-bottom=true] > .scroll-fade-bottom,
+.scroll-fades[data-left=true] > .scroll-fade-left,
+.scroll-fades[data-right=true] > .scroll-fade-right { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .scroll-fades > span { transition: none; }
+}
+html[data-reduce-motion=true] .scroll-fades > span { transition: none; }
+@media (forced-colors: active) {
+  .scroll-fades { display: none; }
+}
+
+@media screen and (forced-colors: none) {
+  :where([data-rei-scrollbar-colors]) { scrollbar-color: auto !important; }
+  :where(*)::-webkit-scrollbar { width: 6px; height: 6px; }
+  :where(*)::-webkit-scrollbar-track { background: var(--rei-website-scrollbar-track, transparent); }
+  :where(*)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  :where(*)::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--rei-website-scrollbar-thumb, color-mix(in srgb, var(--muted) 60%, transparent));
+    background-clip: padding-box;
+  }
+  :where([data-rei-scrollbar-active])::-webkit-scrollbar-thumb {
+    background-color: var(--rei-website-scrollbar-thumb, var(--muted));
+  }
+  :where(*)::-webkit-scrollbar-corner { background: var(--rei-website-scrollbar-track, transparent); }
+}
+
+
+@media screen and (forced-colors: none) {
+  html[data-overlay-scrollbar] { scrollbar-width: none; }
+  html[data-overlay-scrollbar]::-webkit-scrollbar { width: 0; height: 0; }
+}
+.document-scrollbar {
+  position: fixed;
+  right: 0;
+  z-index: 59;
+  width: 8px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  background-clip: padding-box;
+  touch-action: none;
+  cursor: default;
+}
+.document-scrollbar:hover, .document-scrollbar:focus-visible,
+html[data-rei-scrollbar-active] .document-scrollbar { background-color: var(--muted); }
+@media (forced-colors: active) {
+  .document-scrollbar { display: none; }
+}

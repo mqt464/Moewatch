@@ -1,0 +1,3 @@
+Player test media: player-flower.mp4 is the CC0 flower sample from MDN:
+https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
+It is served with byte-range responses in player.spec.ts. No external network is required for browser tests.
