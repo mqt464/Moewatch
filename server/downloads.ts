@@ -11,6 +11,7 @@ import type { PlaybackRequest, PlaybackResponse } from '../shared/api';
 import type { DownloadSeries, DownloadsResponse, DownloadQuality } from '../shared/downloads';
 import { saveMedia, type DownloadReader, type SavedFile } from './download-media';
 import { ApiError } from './infrastructure/errors';
+import { DownloadRate } from './download-progress';
 
 type StoredSeries = DownloadSeries & { directory: string; files: Record<string, SavedFile> };
 type Dependencies = {
@@ -33,7 +34,8 @@ export class DownloadService {
   private closed = false;
   private lastFlush = 0;
   private failure?: Error;
-  private transfer?: { id: string; bytesPerSecond: number; remainingSeconds?: number };
+  private transfer?: { id: string; rate: DownloadRate; remainingBytes?: number };
+  private prepared?: { id: string; episode: number; controller: AbortController; started: number; promise: Promise<PlaybackResponse | undefined> };
 
   constructor(private dependencies: Dependencies) {
     const data = process.env.MOEWATCH_DATA_DIR || join(homedir(), '.moewatch');
@@ -80,7 +82,8 @@ export class DownloadService {
 
   private publicJob({ directory: _directory, files: _files, ...job }: StoredSeries): DownloadSeries {
     const transfer = this.transfer?.id === job.id ? this.transfer : undefined;
-    return { ...job, bytesPerSecond: transfer?.bytesPerSecond || 0, remainingSeconds: transfer?.remainingSeconds };
+    const bytesPerSecond = transfer?.rate.perSecond() || 0;
+    return { ...job, bytesPerSecond, remainingSeconds: bytesPerSecond > 0 && transfer?.remainingBytes !== undefined ? Math.ceil(transfer.remainingBytes / bytesPerSecond) : undefined };
   }
 
   async list(): Promise<DownloadsResponse> {
@@ -144,6 +147,7 @@ export class DownloadService {
     await this.check();
     const job = this.jobs.find(job => job.id === id);
     if (!job) throw new ApiError('NOT_FOUND', 'Download not found', 404);
+    if (this.prepared?.id === id) { this.prepared.controller.abort(); this.prepared = undefined; }
     if (this.active?.id === id) {
       this.active.controller.abort();
       await this.activeDone;
@@ -158,6 +162,35 @@ export class DownloadService {
   }
 
   private activeDone: Promise<void> = Promise.resolve();
+  private prepareNext(signal: AbortSignal) {
+    const job = this.jobs.find(job => job.episodes.some(episode => episode.status === 'queued'));
+    const episode = job?.episodes.find(episode => episode.status === 'queued');
+    if (!job || !episode || this.prepared?.id === job.id && this.prepared.episode === episode.number) return;
+    this.prepared?.controller.abort();
+    const controller = new AbortController();
+    const request = { animeId: job.anime.id, episode: episode.number, provider: job.provider, audio: job.audio, fallback: job.fallback };
+    this.prepared = { id: job.id, episode: episode.number, controller, started: Date.now(), promise: this.dependencies.resolve(request, AbortSignal.any([signal, controller.signal])).catch(() => undefined) };
+  }
+
+  private async resolved(job: StoredSeries, episode: number, signal: AbortSignal, excluded: string[]) {
+    const prepared = this.prepared;
+    if (!excluded.length && prepared) {
+      this.prepared = undefined;
+      if (prepared.id === job.id && prepared.episode === episode && Date.now() - prepared.started < 60000 && !prepared.controller.signal.aborted) {
+        let aborted: () => void = () => {};
+        try {
+          signal.throwIfAborted();
+          const result = await Promise.race([prepared.promise, new Promise<undefined>((_resolve, reject) => {
+            aborted = () => { prepared.controller.abort(); reject(signal.reason); };
+            signal.addEventListener('abort', aborted, { once: true });
+          })]);
+          signal.throwIfAborted();
+          if (result && Date.now() - prepared.started < 60000 && (!result.expiresAt || result.expiresAt > Date.now() + 30000)) return result;
+        } finally { signal.removeEventListener('abort', aborted); }
+      } else prepared.controller.abort();
+    }
+    return this.dependencies.resolve({ animeId: job.anime.id, episode, provider: job.provider, audio: job.audio, fallback: job.fallback }, signal, excluded);
+  }
   private async pump() {
     if (this.running || this.closed || this.failure) return;
     this.running = true;
@@ -193,18 +226,22 @@ export class DownloadService {
       let source: PlaybackResponse['sources'][number];
       const excluded: string[] = [];
       while (true) {
-        this.transfer = { id: job.id, bytesPerSecond: 0 };
-        playback = await this.dependencies.resolve(request, signal, excluded);
+        this.transfer = undefined;
+        playback = await this.resolved(job, episode.number, signal, excluded);
+        const rate = new DownloadRate();
+        this.transfer = { id: job.id, rate };
         const ranked = playback.sources.map(source => ({ source, height: Number(source.quality?.match(/\d+/)?.[0]) || 0 })).filter(item => item.height).sort((a, b) => a.height - b.height);
         source = (ranked.filter(item => item.height <= job.quality).at(-1) || ranked[0])?.source || playback.sources[0];
         if (!source) throw new Error('No downloadable source');
         try {
-          const started = Date.now();
-          media = await saveMedia({ url: source.url, directory, read: this.dependencies.read, quality: job.quality, signal, onProgress: (progress, bytes) => {
+          media = await saveMedia({ url: source.url, directory, read: this.dependencies.read, quality: job.quality, signal, onProgress: (progress, bytes, estimate) => {
             episode.progress = Math.max(episode.progress, progress); episode.bytes = bytes;
-            const bytesPerSecond = bytes / Math.max(.1, (Date.now() - started) / 1000);
-            const pending = job.episodes.filter(item => item.status === 'queued' || item.status === 'downloading').length;
-            this.transfer = { id: job.id, bytesPerSecond, remainingSeconds: progress > 0 && bytesPerSecond > 0 ? Math.ceil(bytes / progress * Math.max(0, pending - progress) / bytesPerSecond) : undefined };
+            rate.update(estimate?.transferredBytes ?? bytes);
+            const completed = job.episodes.filter(item => item.status === 'complete');
+            const average = completed.length ? completed.reduce((sum, item) => sum + item.bytes, 0) / completed.length : estimate?.totalBytes;
+            const pending = job.episodes.filter(item => item.status === 'queued').length;
+            this.transfer = { id: job.id, rate, remainingBytes: estimate?.totalBytes !== undefined ? Math.max(0, estimate.totalBytes - bytes) + (average || 0) * pending : undefined };
+            if (episode.progress >= .8) this.prepareNext(signal);
             if (Date.now() - this.lastFlush > 1500) { this.lastFlush = Date.now(); void this.persist().catch(() => {}); }
           } });
           break;
@@ -218,7 +255,7 @@ export class DownloadService {
         }
       }
       record(folder, media.files);
-      this.transfer = { id: job.id, bytesPerSecond: 0 };
+      this.transfer = undefined;
       const subtitles = [];
       for (let i = 0; i < playback.subtitles.length; i++) {
         const track = playback.subtitles[i];
@@ -285,5 +322,5 @@ export class DownloadService {
     await pipeline(createReadStream(target, { start, end }), response, { signal });
   }
 
-  async close() { this.closed = true; this.active?.controller.abort(); await this.activeDone; await this.writes; }
+  async close() { this.closed = true; this.prepared?.controller.abort(); this.active?.controller.abort(); await this.activeDone; await this.writes; }
 }

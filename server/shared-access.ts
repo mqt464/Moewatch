@@ -31,7 +31,7 @@ export function createSharedAccess(handler: (req: IncomingMessage, res: ServerRe
  const lan = createServer(async (req, res) => {
   if (!state.enabled) { res.writeHead(403).end(); return; }
   const url = new URL(req.url || '/', 'http://localhost');
-  if (url.searchParams.get('access') === state.token) { res.writeHead(303, { Location: '/', 'Set-Cookie': `moewatch_access=${state.token}; Path=/; HttpOnly; SameSite=Strict`, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.end(); return; }
+  if (url.searchParams.get('access') === state.token) { res.writeHead(303, { Location: '/', 'Set-Cookie': `moewatch_access=${state.token}; Path=/; HttpOnly; SameSite=Lax`, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.end(); return; }
   const authorized = req.headers.cookie?.split(';').some(c => c.trim() === `moewatch_access=${state.token}`);
   if (!authorized) { res.writeHead(403).end('Open the link from Shared Access on the desktop app.'); return; }
   req.headers.cookie = `moewatch_session=${state.session}`;
@@ -43,7 +43,8 @@ export function createSharedAccess(handler: (req: IncomingMessage, res: ServerRe
    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
    if (local && !['127.0.0.1', 'localhost'].includes(url.hostname)) { res.writeHead(403).end(); return; }
    if (!local && /^\/api\/v1\/account\/(login|logout|callback)/.test(url.pathname)) return json(res, 403, { error: { message: 'Manage the shared account in the desktop app.' } });
-   if (req.headers.origin && req.headers.origin !== url.origin || req.headers['sec-fetch-site'] === 'cross-site') { res.writeHead(403).end(); return; }
+   const landingNavigation = !local && req.method === 'GET' && url.pathname === '/' && req.headers['sec-fetch-mode'] === 'navigate';
+   if (req.headers.origin && req.headers.origin !== url.origin || req.headers['sec-fetch-site'] === 'cross-site' && !landingNavigation) { res.writeHead(403).end(); return; }
    if (local) {
     const session = req.headers.cookie?.split(';').map(c => c.trim()).find(c => c.startsWith('moewatch_session='))?.slice(17);
     if (session && session !== state.session) { state.session = session; save(); }

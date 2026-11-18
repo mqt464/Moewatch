@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { apiRequest } from '../api';
-import { SettingRow, SettingsCard, SettingsNotice, SettingsToggle } from './controls';
+import { SettingRow, SettingsButton, SettingsCard, SettingsNotice, SettingsToggle } from './controls';
 type Status = { enabled: boolean; keepRunning: boolean; urls: string[] };
 export function SharedAccess() {
  const [status, setStatus] = useState<Status | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -13,9 +13,17 @@ export function SharedAccess() {
   finally { setBusy(false); }
  }
  const url = status?.urls[0];
+ const [copied, setCopied] = useState(false);
+ async function copyLink() {
+  if (!url) return;
+  setError('');
+  try { await navigator.clipboard.writeText(url); setCopied(true); }
+  catch { setError('Could not copy the link. Right-click the address and copy the link instead.'); }
+ }
+ useEffect(() => { if (!copied) return; const timer = window.setTimeout(() => setCopied(false), 2000); return () => window.clearTimeout(timer); }, [copied]);
  return <><SettingsCard>
   <SettingRow title="LAN server" description="Use moewatch on other devices">{binding => <SettingsToggle {...binding} checked={status?.enabled || false} disabled={!status || busy} onChange={enabled => void update({ enabled })} />}</SettingRow>
   <SettingRow title="Keep running while closed">{binding => <SettingsToggle {...binding} checked={status?.keepRunning || false} disabled={!status || busy} onChange={keepRunning => void update({ keepRunning })} />}</SettingRow>
-  {status?.enabled && <SettingRow title="LAN address">{url ? <a className="settings-inline-link" href={url} onClick={event => { event.preventDefault(); void openUrl(url).catch(e => setError(String(e))); }}>{new URL(url).origin}</a> : <span className="setting-value">No network connection</span>}</SettingRow>}
+  {status?.enabled && <SettingRow title="LAN address">{url ? <><a className="settings-inline-link" href={url} onClick={event => { event.preventDefault(); void openUrl(url).catch(e => setError(String(e))); }}>{new URL(url).origin}</a><SettingsButton onClick={() => void copyLink()}>{copied ? 'Copied' : 'Copy link'}</SettingsButton></> : <span className="setting-value">No network connection</span>}</SettingRow>}
  </SettingsCard>{error && <SettingsNotice error>{error}</SettingsNotice>}</>;
 }

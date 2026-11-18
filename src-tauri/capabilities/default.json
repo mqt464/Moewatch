@@ -11,6 +11,20 @@
   "permissions": [
     "core:default",
     "updater:default",
-    "process:allow-restart", {"identifier":"opener:allow-open-url","allow":[{"url":"https://moewatch-signin.mqt464.workers.dev/*"},{"url":"https://anilist.co/*"}]}
+    "process:allow-restart",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://moewatch-signin.mqt464.workers.dev/*"
+        },
+        {
+          "url": "https://anilist.co/*"
+        },
+        {
+          "url": "http://*:17847/*"
+        }
+      ]
+    }
   ]
 }

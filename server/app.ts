@@ -395,7 +395,7 @@ export function createApiHandler(options: AppOptions = {}) {
       send(response, failure.status, { error: { code: failure.code, message: failure.message, provider: failure.provider }, attempts: (error as { attempts?: PlaybackAttempt[] })?.attempts });
     }
   };
-  return Object.assign(handler, { close: () => { discord.close(); void downloads.close().catch(() => {}); } });
+  return Object.assign(handler, { close: () => { discord.close(); media.close(); void downloads.close().catch(() => {}); } });
 }
 
 export function createServer(options: AppOptions = {}) {

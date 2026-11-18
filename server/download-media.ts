@@ -1,8 +1,9 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { DownloadQuality } from '../shared/downloads';
 
 export type DownloadReader = (url: string, signal: AbortSignal) => Promise<{ body: AsyncIterable<Buffer>; type: string; length: number }>;
@@ -26,65 +27,163 @@ export function selectVariant(text: string, quality: number): string {
     .concat(lines.filter(line => line.startsWith('#EXT-X-MEDIA:') && (audio && line.includes(`GROUP-ID="${audio}"`) || subtitles && line.includes(`GROUP-ID="${subtitles}"`))), selected.line, selected.uri).join('\n');
 }
 
-export async function saveMedia(options: { url: string; directory: string; read: DownloadReader; quality: DownloadQuality; signal: AbortSignal; category?: SavedFile['category']; onProgress?: (progress: number, bytes: number) => void }) {
-  const { directory, read, signal, quality } = options;
+export function retryableDownloadError(error: unknown): boolean {
+  const failure = error as { retryable?: boolean; code?: string };
+  if (typeof failure?.retryable === 'boolean') return failure.retryable;
+  return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE', 'TIMEOUT', 'RATE_LIMITED'].includes(failure?.code || '');
+}
+
+export type DownloadProgress = { transferredBytes: number; totalBytes?: number };
+type Asset = { url: string; name: string; playlist: boolean; text?: string; bytes: number; length?: number; duration: number; group?: string; complete: boolean; opened?: Awaited<ReturnType<DownloadReader>> };
+
+export async function saveMedia(options: { url: string; directory: string; read: DownloadReader; quality: DownloadQuality; signal: AbortSignal; category?: SavedFile['category']; onProgress?: (progress: number, bytes: number, estimate?: DownloadProgress) => void }) {
+  const { directory, read, quality } = options;
+  const controller = new AbortController();
+  const signal = AbortSignal.any([options.signal, controller.signal]);
   const category = options.category || 'video';
   await mkdir(directory, { recursive: true });
   const files: SavedFile[] = [];
-  const known = new Map<string, string>();
-  let bytes = 0, finished = 0, discovered = 0;
-  const report = () => options.onProgress?.(Math.min(.99, finished / Math.max(discovered, 1)), bytes);
-  async function save(url: string, depth = 0, ancestors = new Set<string>()): Promise<string> {
+  const known = new Map<string, Asset>();
+  let transferredBytes = 0, bandwidth = 0, duration = 0, lastReport = 0;
+  const binary = () => [...known.values()].filter(asset => !asset.playlist);
+  function report(done = false, force = false) {
+    if (!done && !force && Date.now() - lastReport < 100) return;
+    lastReport = Date.now();
+    const assets = binary();
+    const bytes = [...known.values()].reduce((sum, asset) => sum + asset.bytes, 0);
+    const measured = assets.filter(asset => asset.complete || asset.length);
+    const measuredBytes = measured.reduce((sum, asset) => sum + (asset.length || asset.bytes), 0);
+    const groups = new Map<string, Asset[]>();
+    for (const asset of assets) if (asset.group && asset.duration) {
+      const group = groups.get(asset.group) || []; group.push(asset); groups.set(asset.group, group);
+    }
+    const estimates = [...groups.values()].map(group => {
+      const sampled = group.filter(asset => asset.complete || asset.length);
+      const sampledDuration = sampled.reduce((sum, asset) => sum + asset.duration, 0);
+      return sampledDuration ? sampled.reduce((sum, asset) => sum + (asset.length || asset.bytes), 0) / sampledDuration * group.reduce((sum, asset) => sum + asset.duration, 0) : undefined;
+    });
+    let totalBytes: number | undefined;
+    if (assets.length && measured.length === assets.length) totalBytes = measuredBytes;
+    else if (estimates.length && estimates.every(value => value !== undefined)) totalBytes = estimates.reduce<number>((sum, value) => sum + value!, 0) + assets.filter(asset => !asset.group).reduce((sum, asset) => sum + (asset.length || asset.bytes), 0);
+    else if (bandwidth && duration) totalBytes = bandwidth * duration / 8;
+    else if (!groups.size && measured.length) totalBytes = measuredBytes / measured.length * assets.length;
+    if (totalBytes !== undefined) totalBytes = Math.max(bytes, totalBytes);
+    const fallback = assets.length ? assets.filter(asset => asset.complete).length / assets.length : 0;
+    options.onProgress?.(done ? 1 : Math.min(.99, totalBytes ? bytes / totalBytes : fallback), bytes, { transferredBytes, totalBytes });
+  }
+  async function retry<T>(operation: () => Promise<T>) {
+    for (let attempt = 0; ; attempt++) {
+      signal.throwIfAborted();
+      try { return await operation(); }
+      catch (error) {
+        if (signal.aborted || attempt >= 2 || !retryableDownloadError(error)) throw error;
+        await delay(250 * 2 ** attempt, undefined, { signal });
+      }
+    }
+  }
+  async function plan(url: string, playlist: boolean | undefined, depth = 0, ancestors = new Set<string>()): Promise<string> {
     signal.throwIfAborted();
     if (depth > 6 || ancestors.has(url)) throw new Error('Invalid nested playlist');
     const existing = known.get(url);
-    if (existing) return existing;
-    if (++discovered > 30000) throw new Error('Too many download assets');
-    const source = await read(url, signal);
-    const playlist = /mpegurl/i.test(source.type);
-    const name = `${known.size}.${playlist ? 'm3u8' : 'bin'}`;
-    known.set(url, name);
-    let size = 0;
-    if (playlist) {
-      let text = '';
-      for await (const chunk of source.body) {
-        size += chunk.length;
-        if (size > 2 * 1024 * 1024) throw new Error('Playlist too large');
-        text += chunk.toString('utf8');
+    if (existing) return existing.name;
+    if (known.size >= 30000) throw new Error('Too many download assets');
+    const asset: Asset = { url, name: `${known.size}.bin`, playlist: !!playlist, bytes: 0, duration: 0, complete: false };
+    known.set(url, asset);
+    if (playlist === false) return asset.name;
+    const text = await retry(async () => {
+      const source = await read(url, signal);
+      if (!/mpegurl/i.test(source.type)) {
+        if (playlist) throw new Error('Expected an HLS playlist');
+        asset.opened = source; asset.length = source.length || undefined;
+        return undefined;
       }
-      if (!text.startsWith('#EXTM3U')) throw new Error('Invalid playlist');
-      if (!text.includes('#EXT-X-STREAM-INF') && !text.includes('#EXT-X-ENDLIST')) throw new Error('Live streams cannot be downloaded');
-      if (/#EXT-X-(?:KEY|SESSION-KEY):.*(?:METHOD=SAMPLE-AES|KEYFORMAT=)/.test(text)) throw new Error('This encrypted stream does not support downloads');
-      text = selectVariant(text, quality);
-      const next = new Set(ancestors).add(url);
-      const lines = text.split(/\r?\n/);
-      // Register the whole playlist first so progress advances across segments.
-      const refs = [...new Set(lines.flatMap(line => line.startsWith('#') ? [...line.matchAll(/URI="([^"]+)"/g)].map(m => m[1]) : line.trim() ? [line.trim()] : []))];
-      discovered += refs.length;
-      const local = new Map<string, string>();
-      for (const ref of refs) { discovered--; local.set(ref, await save(ref, depth + 1, next)); }
-      text = lines.map(line => line.startsWith('#') ? line.replace(/URI="([^"]+)"/g, (_, uri: string) => `URI="${local.get(uri)}"`) : local.get(line.trim()) || line).join('\n');
-      size = Buffer.byteLength(text);
-      await writeFile(join(directory, name), text, { signal });
-      bytes += size;
-    } else {
-      const meter = new Transform({ transform(chunk: Buffer, _encoding, callback) {
-        size += chunk.length; bytes += chunk.length;
-        if (size > 4 * 1024 ** 3) { callback(new Error('Download asset is too large')); return; }
-        options.onProgress?.(Math.min(.99, (finished + (source.length ? size / source.length : 0)) / Math.max(discovered, 1)), bytes);
-        callback(null, chunk);
-      } });
-      await pipeline(Readable.from(source.body), meter, createWriteStream(join(directory, name), { flags: 'wx' }), { signal });
+      let size = 0;
+      const chunks: Buffer[] = [];
+      for await (const chunk of source.body) {
+        size += chunk.length; transferredBytes += chunk.length;
+        if (size > 2 * 1024 * 1024) throw new Error('Playlist too large');
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks).toString('utf8');
+    });
+    if (text === undefined) return asset.name;
+    asset.playlist = true; asset.name = asset.name.replace('.bin', '.m3u8');
+    if (!text.startsWith('#EXTM3U')) throw new Error('Invalid playlist');
+    const master = text.includes('#EXT-X-STREAM-INF');
+    if (!master && !text.includes('#EXT-X-ENDLIST')) throw new Error('Live streams cannot be downloaded');
+    if (/#EXT-X-(?:KEY|SESSION-KEY):.*(?:METHOD=SAMPLE-AES|KEYFORMAT=)/.test(text)) throw new Error('This encrypted stream does not support downloads');
+    const selected = selectVariant(text, quality);
+    if (master) bandwidth = Number(selected.match(/AVERAGE-BANDWIDTH=(\d+)/)?.[1] || selected.match(/[:,]BANDWIDTH=(\d+)/)?.[1]) || bandwidth;
+    const lines = selected.split(/\r?\n/);
+    const next = new Set(ancestors).add(url);
+    const local = new Map<string, string>();
+    let segmentDuration = 0, playlistDuration = 0;
+    for (const line of lines) {
+      if (line.startsWith('#')) {
+        if (line.startsWith('#EXTINF:')) segmentDuration = Number(line.slice(8).split(',')[0]) || 0;
+        for (const match of line.matchAll(/URI="([^"]+)"/g)) local.set(match[1], await plan(match[1], line.startsWith('#EXT-X-MEDIA:'), depth + 1, next));
+      } else if (line.trim()) {
+        const ref = line.trim();
+        local.set(ref, await plan(ref, master, depth + 1, next));
+        if (!master) { const child = known.get(ref)!; child.duration += segmentDuration; child.group = url; playlistDuration += segmentDuration; segmentDuration = 0; }
+      }
     }
-    let type = source.type.split(';')[0].trim().toLowerCase();
-    if (category === 'artwork' && !/^image\/(?:jpeg|png|webp|gif|avif)$/.test(type)) throw new Error('Unsupported artwork format');
-    if (category === 'subtitles') type = 'text/plain; charset=utf-8';
-    else if (category === 'video' && !/^(?:video\/(?:mp4|webm|mp2t)|audio\/(?:aac|mp4|mpeg)|application\/(?:octet-stream|vnd\.apple\.mpegurl|x-mpegurl))$/.test(type)) type = 'application/octet-stream';
-    files.push({ name, type: playlist ? 'application/vnd.apple.mpegurl' : type, bytes: size, category });
-    finished++; report();
-    return name;
+    duration = Math.max(duration, playlistDuration);
+    asset.text = lines.map(line => line.startsWith('#') ? line.replace(/URI="([^"]+)"/g, (_, uri: string) => `URI="${local.get(uri)}"`) : local.get(line.trim()) || line).join('\n');
+    return asset.name;
   }
-  const entry = await save(options.url);
-  options.onProgress?.(1, bytes);
-  return { entry, files, bytes };
+  async function transfer(asset: Asset) {
+    const path = join(directory, asset.name);
+    await retry(async () => {
+      asset.bytes = 0;
+      await rm(path, { force: true });
+      const source = asset.opened || await read(asset.url, signal);
+      asset.opened = undefined;
+      asset.length = source.length || undefined;
+      const meter = new Transform({ transform(chunk: Buffer, _encoding, callback) {
+        const firstChunk = asset.bytes === 0;
+        asset.bytes += chunk.length; transferredBytes += chunk.length;
+        if (asset.bytes > 4 * 1024 ** 3) { callback(new Error('Download asset is too large')); return; }
+        report(false, firstChunk); callback(null, chunk);
+      } });
+      try {
+        await pipeline(Readable.from(source.body), meter, createWriteStream(path, { flags: 'wx' }), { signal });
+        if (source.length && asset.bytes !== source.length) throw Object.assign(new Error('Download was truncated'), { code: 'ERR_STREAM_PREMATURE_CLOSE' });
+      } catch (error) { asset.bytes = 0; await rm(path, { force: true }); report(); throw error; }
+      let type = source.type.split(';')[0].trim().toLowerCase();
+      if (category === 'artwork' && !/^image\/(?:jpeg|png|webp|gif|avif)$/.test(type)) throw new Error('Unsupported artwork format');
+      if (category === 'subtitles') type = 'text/plain; charset=utf-8';
+      else if (category === 'video' && !/^(?:video\/(?:mp4|webm|mp2t)|audio\/(?:aac|mp4|mpeg)|application\/(?:octet-stream|vnd\.apple\.mpegurl|x-mpegurl))$/.test(type)) type = 'application/octet-stream';
+      files.push({ name: asset.name, type, bytes: asset.bytes, category });
+      asset.complete = true; report();
+    });
+  }
+  try {
+    const entry = await plan(options.url, undefined);
+    report();
+    const groups = new Map<string, Asset[]>();
+    for (const asset of binary()) { const group = groups.get(asset.group || '') || []; group.push(asset); groups.set(asset.group || '', group); }
+    const assets: Asset[] = [];
+    const iterators = [...groups.values()].map(group => group.values());
+    let added = true;
+    while (added) {
+      added = false;
+      for (const iterator of iterators) { const item = iterator.next(); if (!item.done) { assets.push(item.value); added = true; } }
+    }
+    let next = 0, failure: unknown;
+    await Promise.allSettled(Array.from({ length: Math.min(4, assets.length) }, async () => {
+      try {
+        while (next < assets.length) { signal.throwIfAborted(); await transfer(assets[next++]); }
+      } catch (error) { failure ??= error; controller.abort(error); }
+    }));
+    if (failure) throw failure;
+    signal.throwIfAborted();
+    for (const asset of known.values()) if (asset.playlist) {
+      await writeFile(join(directory, asset.name), asset.text!, { signal });
+      asset.bytes = Buffer.byteLength(asset.text!); asset.complete = true;
+      files.push({ name: asset.name, type: 'application/vnd.apple.mpegurl', bytes: asset.bytes, category });
+    }
+    report(true);
+    return { entry, files, bytes: files.reduce((sum, file) => sum + file.bytes, 0) };
+  } catch (error) { controller.abort(error); throw error; }
 }

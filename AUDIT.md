@@ -1,5 +1,17 @@
 # Initial release audit
 
+## Version 0.1.3 hotfix audit
+
+Reviewed every pending tracked and new file, including download concurrency, retries, estimates, prefetch cancellation, connection pooling, LAN links, native permissions and tests. No additional dead code or duplicate implementation was found in the pending changes.
+
+- Removed a redundant outer response variable in media planning.
+- Rechecked prefetch age after awaiting resolution so a slow lookup cannot bypass the one-minute freshness limit.
+- Fixed the moving speed window so a stalled transfer reports zero even when clients have not polled for more than five seconds.
+- Isolated the compiled-sidecar smoke test with a temporary data directory and an available port. The previous fixed port could hit a running app's LAN listener.
+- Bumped the desktop and npm versions to 0.1.3.
+
+Validation: app/API tests, seven relay tests, ten focused download/shared-access/updater browser tests, TypeScript unused-local and unused-parameter checks, production build, compiled Bun sidecar and isolated sidecar smoke test pass. Native installer generation runs in the release workflow. The full browser suite and interactive installation, sign-in and upgrade were not repeated. Existing browser findings below remain open.
+
 Reviewed the entire initial source tree, authentication relay, API trust boundaries, media proxy, provider adapters, playback, preferences and release packaging. This is a source review and automated verification, not a penetration test.
 
 - Existing browser/server commands remain available. Desktop serves the same frontend and API on loopback only.

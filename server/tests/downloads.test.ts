@@ -117,7 +117,7 @@ test('failed audio remains failed without replacing it and retries keep complete
     fail = false;
     await service.enqueue(anime, [1, 2], request, 720);
     await waitFor(async () => (await service.list()).downloads[0].episodes.every(episode => episode.status === 'complete'));
-    assert.deepEqual(calls, [1, 2, 2]);
+    assert.deepEqual(calls, [1, 2, 2, 2]); // Failed prefetch is resolved again when its episode starts.
   } finally { await service.close(); await rm(folder, { recursive: true, force: true }); }
 });
 
@@ -203,4 +203,79 @@ test('download API validates requests and keeps folder changes behind same-origi
     assert.equal((await fetch(`${root}/downloads/location`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: '../outside' }) })).status, 400);
     assert.equal((await fetch(`${root}/downloads/location`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: 'https://untrusted.example' }, body: JSON.stringify({ location: join(folder, 'other') }) })).status, 403);
   } finally { server.close(); await rm(folder, { recursive: true, force: true }); }
+});
+
+test('next episode resolves before the current download finishes, and expiring prefetches resolve again', async () => {
+  for (const expiresSoon of [false, true]) {
+    const folder = await mkdtemp(join(tmpdir(), 'moewatch-prefetch-'));
+    const calls: number[] = [];
+    let release!: () => void;
+    const finish = new Promise<void>(resolve => { release = resolve; });
+    const service = new DownloadService({ stateFile: join(folder, 'state.json'), defaultLocation: join(folder, 'videos'), artwork: async url => url, thumbnail: async () => null,
+      resolve: async request => {
+        calls.push(request.episode);
+        return { ...playback, episode: request.episode, expiresAt: request.episode === 2 && expiresSoon ? Date.now() + 1000 : Date.now() + 120000, subtitles: [], sources: [{ url: `episode-${request.episode}`, type: 'mp4' }] };
+      },
+      read: async (url, signal) => {
+        if (!url.startsWith('episode-')) return reader(url, signal);
+        return { type: 'video/mp4', length: 1000, body: (async function* () {
+          yield Buffer.alloc(900);
+          if (url === 'episode-1') await finish;
+          signal.throwIfAborted(); yield Buffer.alloc(100);
+        })() };
+      },
+    });
+    try {
+      await service.enqueue(anime, [1, 2], { animeId: 1, episode: 1 }, 720);
+      await waitFor(async () => calls.includes(2));
+      const before = (await service.list()).downloads[0];
+      assert.equal(before.episodes[0].status, 'downloading');
+      assert.equal(before.episodes[1].status, 'queued');
+      release();
+      await waitFor(async () => (await service.list()).downloads[0].episodes.every(episode => episode.status === 'complete'));
+      assert.deepEqual(calls, expiresSoon ? [1, 2, 2] : [1, 2]);
+    } finally { release(); await service.close(); await rm(folder, { recursive: true, force: true }); }
+  }
+});
+
+test('cancelling while waiting for a prefetched source aborts that resolution', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'moewatch-prefetch-cancel-'));
+  let prefetchedSignal: AbortSignal | undefined;
+  const service = new DownloadService({ stateFile: join(folder, 'state.json'), defaultLocation: join(folder, 'videos'), artwork: async url => url, thumbnail: async () => null, read: reader,
+    resolve: async (request, signal) => {
+      if (request.episode === 1) return playback;
+      prefetchedSignal = signal;
+      return new Promise<PlaybackResponse>((_resolve, reject) => { signal.addEventListener('abort', () => reject(signal.reason), { once: true }); });
+    },
+  });
+  try {
+    const job = await service.enqueue(anime, [1, 2], { animeId: 1, episode: 1 }, 720);
+    await waitFor(async () => (await service.list()).downloads[0].episodes[1].status === 'downloading');
+    await service.remove(job.id);
+    assert.equal(prefetchedSignal?.aborted, true);
+    assert.equal((await service.list()).downloads.length, 0);
+  } finally { await service.close(); await rm(folder, { recursive: true, force: true }); }
+});
+
+test('a prefetch that takes over a minute resolves again before use', async context => {
+  const folder = await mkdtemp(join(tmpdir(), 'moewatch-prefetch-age-'));
+  const now = Date.now();
+  let elapsed = 0, calls = 0;
+  context.mock.method(Date, 'now', () => now + elapsed);
+  let release!: () => void;
+  const finish = new Promise<void>(resolve => { release = resolve; });
+  const service = new DownloadService({ stateFile: join(folder, 'state.json'), defaultLocation: join(folder, 'videos'), artwork: async url => url, thumbnail: async () => null, read: reader,
+    resolve: async request => {
+      if (request.episode === 2 && ++calls === 1) await finish;
+      return playback;
+    },
+  });
+  try {
+    await service.enqueue(anime, [1, 2], { animeId: 1, episode: 1 }, 720);
+    await waitFor(async () => (await service.list()).downloads[0].episodes[1].status === 'downloading');
+    elapsed = 61000;
+    release();
+    await waitFor(async () => (await service.list()).downloads[0].episodes.every(episode => episode.status === 'complete'));
+    assert.equal(calls, 2);
+  } finally { release(); await service.close(); await rm(folder, { recursive: true, force: true }); }
 });

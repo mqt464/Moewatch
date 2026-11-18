@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
-import { request as httpsRequest } from 'node:https';
+import { Agent as HttpAgent, request as httpRequest, type ClientRequestArgs, type IncomingMessage, type ServerResponse } from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import { once } from 'node:events';
 import { ApiError } from './errors';
@@ -11,6 +11,19 @@ type PlaylistOptions = { playlistKey?: string; audioLanguage?: 'ja' | 'en' };
 type Token = { url: string; origin: string; headers: Record<string, string>; expires: number; key: string; playlist: PlaylistOptions };
 export const mediaTokenTtlMs = 2 * 60 * 60_000;
 const dnsCache = new TtlCache<{ address: string; family: 4 | 6 }>(256, 30_000);
+
+type PinnedOptions = ClientRequestArgs & { mediaAddress?: string; mediaFamily?: number };
+export function createMediaAgents() {
+  // A changed DNS pin must never reuse a connection to the previous address.
+  class HttpPool extends HttpAgent {
+    getName(options: PinnedOptions) { return `${super.getName(options)}:${options.mediaAddress}:${options.mediaFamily}`; }
+  }
+  class HttpsPool extends HttpsAgent {
+    getName(options: PinnedOptions) { return `${super.getName(options)}:${options.mediaAddress}:${options.mediaFamily}`; }
+  }
+  const options = { keepAlive: true, maxSockets: 8, maxFreeSockets: 4, maxTotalSockets: 32, timeout: 15000 };
+  return { http: new HttpPool(options), https: new HttpsPool(options) };
+}
 
 export function pinnedLookup(pinned: { address: string; family: 4 | 6 }): LookupFunction {
   return (_hostname, options, callback) => {
@@ -101,14 +114,17 @@ export function preparePlaylist(text: string, options: PlaylistOptions): string 
   return lines.filter(line => !audio.includes(line) || selected.includes(line)).map(line => selected.includes(line) ? line.replace(/\bDEFAULT=(?:YES|NO)/, 'DEFAULT=YES') : line).join('\n');
 }
 
-async function upstream(url: URL, headers: Record<string, string>, method: 'GET' | 'HEAD', signal: AbortSignal, redirects = 0): Promise<{ response: IncomingMessage; url: URL }> {
+async function upstream(url: URL, headers: Record<string, string>, method: 'GET' | 'HEAD', signal: AbortSignal, agents: ReturnType<typeof createMediaAgents>, redirects = 0): Promise<{ response: IncomingMessage; url: URL }> {
   if (redirects > 5) throw new ApiError('UPSTREAM_BLOCKED', 'Too many media redirects', 502);
   const pinned = await validated(url);
   const response = await new Promise<IncomingMessage>((resolve, reject) => {
-    const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
+    const options = {
       method, headers, signal, timeout: 12_000,
       lookup: pinnedLookup(pinned),
-    }, resolve);
+      mediaAddress: pinned.address, mediaFamily: pinned.family,
+      agent: url.protocol === 'https:' ? agents.https : agents.http,
+    };
+    const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, resolve);
     request.on('timeout', () => request.destroy(new ApiError('TIMEOUT', 'Media upstream timed out', 504)));
     request.on('error', reject);
     request.end();
@@ -119,12 +135,13 @@ async function upstream(url: URL, headers: Record<string, string>, method: 'GET'
     if (!location) throw new ApiError('UPSTREAM_ERROR', 'Media redirect lacks location');
     const next = new URL(location, url);
     await validated(next);
-    return upstream(next, next.origin === url.origin ? headers : crossHostHeaders(headers), method, signal, redirects + 1);
+    return upstream(next, next.origin === url.origin ? headers : crossHostHeaders(headers), method, signal, agents, redirects + 1);
   }
   return { response, url };
 }
 
 export function createMediaProxy() {
+  const agents = createMediaAgents();
   const tokens = new Map<string, Token>();
   const tokenKeys = new Map<string, string>();
   function remove(token: string) {
@@ -159,7 +176,7 @@ export function createMediaProxy() {
       if (!/^bytes=\d*-\d*(?:,\d*-\d*){0,4}$/.test(range)) throw new ApiError('INVALID_REQUEST', 'Invalid Range header', 400);
       headers.Range = range;
     }
-    const { response: source, url } = await upstream(new URL(item.url), headers, method, signal);
+    const { response: source, url } = await upstream(new URL(item.url), headers, method, signal, agents);
     const status = source.statusCode ?? 502;
     if (status < 200 || status >= 300) {
       source.destroy();
@@ -200,8 +217,11 @@ export function createMediaProxy() {
   async function read(path: string, signal: AbortSignal) {
     const item = tokens.get(path.replace(/^\/media\//, ''));
     if (!item || item.expires <= Date.now()) throw new ApiError('SOURCE_EXPIRED', 'Media token expired', 410);
-    const { response, url } = await upstream(new URL(item.url), { ...item.headers, 'Accept-Encoding': 'identity' }, 'GET', signal);
-    if (response.statusCode !== 200) { response.destroy(); throw new ApiError('UPSTREAM_ERROR', `Download source HTTP ${response.statusCode}`, 502); }
+    const { response, url } = await upstream(new URL(item.url), { ...item.headers, 'Accept-Encoding': 'identity' }, 'GET', signal, agents);
+    if (response.statusCode !== 200) {
+      response.destroy();
+      throw Object.assign(new ApiError('UPSTREAM_ERROR', `Download source HTTP ${response.statusCode}`, 502), { retryable: [408, 429, 500, 502, 503, 504].includes(response.statusCode || 0) });
+    }
     const type = String(response.headers['content-type'] || 'application/octet-stream');
     if (url.pathname.toLowerCase().endsWith('.m3u8') || /mpegurl/i.test(type)) {
       const chunks: Buffer[] = [];
@@ -217,5 +237,5 @@ export function createMediaProxy() {
     }
     return { body: response as AsyncIterable<Buffer>, type, length: Number(response.headers['content-length']) || 0 };
   }
-  return { issue, handle, read };
+  return { issue, handle, read, close: () => { agents.http.destroy(); agents.https.destroy(); } };
 }
