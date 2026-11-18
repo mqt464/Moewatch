@@ -20,3 +20,5 @@ The full Playwright run completed with 74 passes and 11 failures. Focused Settin
 Open browser findings are in frontend.spec.ts, loading.spec.ts, polish.spec.ts, providers.spec.ts and scroll-fades.spec.ts. Several assertions target removed controls or old copy, including Preferred provider, Appearance and No video source. Other failures concern buffering, reduced motion, mobile fades, hero positioning and list removal. These need individual triage; this release does not claim the entire browser suite passes.
 
 Concurrent working-tree edits in CinemaControls.tsx and playback.css were reviewed. They wrap the countdown label in a span and restyle its buttons to match the skip control. No authentication or update logic changes appear in that diff. They remain outside the release commit because they arrived during release preparation.
+
+The native updater cleanup also owns the bundled server as a Tauri resource. Both normal exit and updater cleanup stop that process before replacement. The README now contains only installation, usage and essential development commands.
