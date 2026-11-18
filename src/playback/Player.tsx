@@ -7,6 +7,15 @@ export function canResume(time: number, previousDuration: number, duration: numb
   return Number.isFinite(duration) && duration > 0 && time > 0 && time < duration * 0.95 && Math.abs(previousDuration - duration) <= Math.max(2, duration * 0.02);
 }
 
+export function togglePlayback(videoRef: RefObject<HTMLVideoElement | null>, onError: (message: string) => void) {
+  const video = videoRef.current;
+  if (!video) return;
+  if (video.paused) void video.play().catch(failure => {
+    if (videoRef.current === video && failure?.name !== 'AbortError') onError('Playback could not start. Try another server.');
+  });
+  else video.pause();
+}
+
 export function Player({ source, videoRef, label, onSave, onReady, onBuffering, onError, onClick }: {
   source: PlaybackSource;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -32,19 +41,24 @@ export function Player({ source, videoRef, label, onSave, onReady, onBuffering, 
     let hls: Hls | undefined;
     let disposed = false;
     async function attach(element: HTMLVideoElement) {
-      if (source.type === 'hls' && !element.canPlayType('application/vnd.apple.mpegurl')) {
+      if (source.type === 'hls') {
         const { default: Hls } = await import('hls.js');
         if (disposed) return;
-        if (!Hls.isSupported()) { callbacks.current.onError('This browser does not support HLS playback. Try another browser or a local file.'); return; }
+        // Chromium can report native HLS support but fail on separate audio/video streams.
+        if (!Hls.isSupported()) {
+          if (element.canPlayType('application/vnd.apple.mpegurl')) element.src = source.url;
+          else callbacks.current.onError('This browser does not support this stream.');
+          return;
+        }
         hls = new Hls({ manifestLoadingMaxRetry: 1, levelLoadingMaxRetry: 1, fragLoadingMaxRetry: 1 });
         hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) callbacks.current.onError('The stream could not be played. Retry or choose another provider.');
+          if (data.fatal) callbacks.current.onError('This stream cannot be played. Try another server.');
         });
         hls.loadSource(source.url);
         hls.attachMedia(element);
       } else element.src = source.url;
     }
-    void attach(video).catch(() => { if (!disposed) callbacks.current.onError('The video player could not be loaded. Retry the page.'); });
+    void attach(video).catch(() => { if (!disposed) callbacks.current.onError('The player could not load. Reload the page.'); });
     return () => {
       disposed = true;
       callbacks.current.onSave(true, video);
@@ -61,7 +75,7 @@ export function Player({ source, videoRef, label, onSave, onReady, onBuffering, 
     onSeeked={() => onSave(true)} onTimeUpdate={() => onSave()} onPause={() => onSave(true)} onEnded={() => onSave(true)}
     onLoadStart={() => onBuffering(true)} onWaiting={() => onBuffering(true)}
     onCanPlay={() => onBuffering(false)} onPlaying={() => onBuffering(false)}
-    onLoadedMetadata={onReady} onError={() => onError('This browser cannot play this source. Retry, choose another provider, or open an MP4 or WebM file.')}>
+    onLoadedMetadata={onReady} onError={() => onError('This source cannot be played. Try another server.')}>
 
   </video>;
 }

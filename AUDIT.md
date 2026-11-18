@@ -1,5 +1,18 @@
 # Initial release audit
 
+## Version 0.1.4 hotfix audit
+
+Reviewed all pending changes to playback, scrub previews, error presentation, styles and browser tests.
+
+- Consolidated duplicate play/pause handling, including ignored AbortError rejections and checks against replaced video elements.
+- Removed the unused file-input reference and five obsolete source-attribution CSS rules.
+- Kept subtitle and fullscreen failures as nonfatal status messages. They no longer pause working video or show a fatal error overlay.
+- Restored retry for failed availability checks, which otherwise left every provider disabled.
+- Retained MediaSource-first HLS playback and preview loading, with native playback as the fallback when MediaSource is unsupported.
+- Renamed the buffering test to describe its spinner and bumped npm and desktop versions to 0.1.4.
+
+Validation: 102 app/API tests, seven relay tests, 32 focused player/loading/updater browser tests, TypeScript unused-local and unused-parameter checks, production build, compiled Bun sidecar and isolated sidecar smoke test pass. Browser coverage includes subtitle/fullscreen failures, availability retry, server switching, interrupted play and native-HLS detection. Native installer generation runs in the release workflow. The full browser suite, native-only HLS fallback, interactive installation and installed-client upgrade were not repeated. Existing browser findings below remain open.
+
 ## Version 0.1.3 hotfix audit
 
 Reviewed every pending tracked and new file, including download concurrency, retries, estimates, prefetch cancellation, connection pooling, LAN links, native permissions and tests. No additional dead code or duplicate implementation was found in the pending changes.

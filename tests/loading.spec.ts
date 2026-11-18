@@ -85,7 +85,7 @@ test('slow artwork skeleton does not hold back titles or navigation', async ({ p
   expect(await poster.locator('.poster-image').boundingBox()).toEqual(before);
 });
 
-test('video buffering uses a Skullet overlay without replacing the player', async ({ page }) => {
+test('video buffering uses a spinner without replacing the player', async ({ page }) => {
   await page.route('**/api/v1/**', route => route.abort());
   await page.goto('/watch/154587/1');
   const bytes = await page.evaluate(async () => {
@@ -117,13 +117,13 @@ test('video buffering uses a Skullet overlay without replacing the player', asyn
   const original = await player.elementHandle();
   await player.dispatchEvent('waiting');
   await expect(page.getByRole('status', { name: 'Loading video', exact: true })).toBeVisible();
-  await expect(page.locator('.player-loading [skullet-bar]')).toBeVisible();
+  await expect(page.locator('.player-loading .buffer-spinner')).toBeVisible();
   expect(await original!.evaluate(video => video.isConnected)).toBe(true);
-  await expect(player).toHaveJSProperty('controls', true);
+  await expect(player).toHaveJSProperty('controls', false);
   await player.dispatchEvent('canplay');
   await expect(page.locator('.player-loading')).toHaveCount(0);
   await page.getByLabel('Choose a local video').setInputFiles({ name: 'broken.webm', mimeType: 'video/webm', buffer: Buffer.from('not a video') });
-  await expect(page.getByRole('alert')).toContainText('This browser cannot play this source.');
+  await expect(page.getByRole('alert')).toContainText('This source cannot be played. Try another server.');
   await expect(page.locator('.player-loading')).toHaveCount(0);
 });
 

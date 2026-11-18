@@ -30,9 +30,13 @@ export function ScrubPreview({ source, time, position, visible }: { source: Play
     video.addEventListener('loadeddata', draw);
     video.addEventListener('seeked', draw);
     async function attach() {
-      if (source.type === 'hls' && !video.canPlayType('application/vnd.apple.mpegurl')) {
+      if (source.type === 'hls') {
         const { default: Hls } = await import('hls.js');
-        if (disposed || !Hls.isSupported()) return;
+        if (disposed) return;
+        if (!Hls.isSupported()) {
+          if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = source.url;
+          return;
+        }
         hls = new Hls({ startLevel: 0, maxBufferLength: 2, maxMaxBufferLength: 4, backBufferLength: 0 });
         hls.loadSource(source.url);
         hls.attachMedia(video);

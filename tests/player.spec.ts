@@ -319,3 +319,91 @@ test('scrubbing shows a frame and timestamp without moving playback on hover', a
  await slider.blur();
  await expect(preview).toHaveCount(0);
 });
+
+test('playback errors use one mascot message and clear when switching servers', async ({ page }) => {
+ await fixture(page);
+ await page.locator('video').dispatchEvent('error');
+ await expect(page.locator('.player-empty[role="alert"] .source-mascot')).toBeVisible();
+ await expect(page.locator('.player-empty .source-status')).toHaveText('This source cannot be played. Try another server.');
+ await expect(page.locator('.watch-content > .notice, .cinema-note')).toHaveCount(0);
+ await expect(page.getByLabel('Choose a local video')).toBeHidden();
+ await page.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await page.getByRole('combobox', { name: 'Server', exact: true }).selectOption('backup');
+ await expect(page.locator('.player-empty')).toHaveCount(0);
+ await expect.poll(() => page.locator('video').evaluate(v => (v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+});
+
+test('play button failures use the mascot instead of a control banner', async ({ page }) => {
+ await fixture(page);
+ await page.locator('video').evaluate(v => { v.play = () => Promise.reject(new Error('Unsupported source')); });
+ await page.getByRole('button', { name: 'Play', exact: true }).click();
+ await expect(page.locator('.player-empty[role="alert"] .source-mascot')).toBeVisible();
+ await expect(page.locator('.cinema-note, .watch-content > .notice')).toHaveCount(0);
+});
+
+test('source resolution failures use one mascot message at desktop and mobile sizes', async ({ page }) => {
+ await fixture(page);
+ await page.route('**/api/v1/playback', route => route.fulfill({ status: 502, json: { error: { code: 'UPSTREAM_ERROR', message: 'Upstream unavailable' } } }));
+ await page.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await page.getByRole('combobox', { name: 'Server', exact: true }).selectOption('backup');
+ await page.locator('.cinema-header h1').click();
+ await expect(page.locator('.player-empty[role="alert"]')).toHaveText('No playable source found. Try another server.');
+ await expect(page.locator('.source-mascot')).toBeVisible();
+ await expect(page.locator('.notice, .cinema-note, .player-loading')).toHaveCount(0);
+ await expect(page.locator('.cinema-panel')).toHaveCount(0);
+ for (const [name, width, height] of [['desktop', 1440, 900], ['mobile', 390, 844]] as const) {
+  await page.setViewportSize({ width, height });
+  const message = page.locator('.source-status');
+  expect(await message.evaluate(el => el.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).lineHeight) + 1)).toBe(true);
+  await page.screenshot({ path: `artifacts/player/error-${name}.png` });
+ }
+});
+
+test('interrupted play does not show a playback error', async ({ page }) => {
+ await fixture(page);
+ await page.locator('video').evaluate(v => { v.play = () => Promise.reject(new DOMException('Interrupted', 'AbortError')); });
+ await page.getByRole('button', { name: 'Play', exact: true }).click();
+ await expect(page.locator('.player-empty, .notice, .cinema-note')).toHaveCount(0);
+});
+
+test('HLS uses MediaSource even when native playback reports maybe', async ({ page }) => {
+ await page.addInitScript(() => {
+  const original = HTMLMediaElement.prototype.canPlayType;
+  HTMLMediaElement.prototype.canPlayType = function(type) { return type === 'application/vnd.apple.mpegurl' ? 'maybe' : original.call(this, type); };
+ });
+ await fixture(page);
+ await page.route('**/api/v1/playback', route => route.fulfill({ json: { provider: 'anikoto', server: { id: 'main', name: 'Main' }, sources: [{ url: '/media/test.m3u8', type: 'hls' }], subtitles: [], attempts: [] } }));
+ await page.route('**/media/test.m3u8', route => route.fulfill({ contentType: 'application/vnd.apple.mpegurl', body: '#EXTM3U\n' }));
+ await page.reload();
+ await expect(page.locator('video')).toHaveAttribute('src', /^blob:/);
+});
+
+test('subtitle and fullscreen failures leave playback usable', async ({ page }) => {
+ await fixture(page);
+ await page.route('**/media/sub.vtt', route => route.fulfill({ status: 503, body: '' }));
+ await page.getByRole('button', { name: 'Play', exact: true }).click();
+ await page.getByRole('button', { name: 'Subtitles', exact: true }).click();
+ await page.getByRole('button', { name: 'On', exact: true }).click();
+ await expect(page.getByRole('status')).toHaveText('Subtitles could not be loaded.');
+ await expect(page.locator('video')).toHaveJSProperty('paused', false);
+ await expect(page.locator('.player-empty')).toHaveCount(0);
+ await page.getByRole('button', { name: 'Off', exact: true }).click();
+ await expect(page.getByText('Subtitles could not be loaded.')).toHaveCount(0);
+ await page.locator('.cinema-header h1').click();
+ await page.locator('.watch-content').evaluate(element => { element.requestFullscreen = () => Promise.reject(new Error('Unavailable')); });
+ await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+ await expect(page.getByRole('status')).toHaveText('Fullscreen is unavailable in this browser.');
+ await expect(page.locator('video')).toHaveJSProperty('paused', false);
+ await expect(page.locator('.player-empty')).toHaveCount(0);
+});
+
+test('failed availability checks can be retried from the mascot', async ({ page }) => {
+ await fixture(page);
+ await page.route('**/api/v1/anime/*/availability', route => route.fulfill({ status: 503, json: { error: { message: 'Unavailable' } } }));
+ await page.reload();
+ await expect(page.getByRole('alert')).toContainText('Sources could not be checked.');
+ await page.unroute('**/api/v1/anime/*/availability');
+ await page.getByRole('button', { name: 'Retry source check', exact: true }).click();
+ await expect.poll(() => page.locator('video').evaluate(v => (v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+ await expect(page.locator('.player-empty')).toHaveCount(0);
+});

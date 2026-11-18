@@ -5,12 +5,13 @@ import { apiRequest } from '../api';
 import { usePreferences } from '../PreferencesContext';
 import { clock, parseSubtitles, type Cue } from './subtitles';
 import { ScrubPreview } from './ScrubPreview';
+import { togglePlayback } from './Player';
 
-export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks, audio, audioAvailable, onAudioChange, animeId, episode, next, nextEpisode, local, children }: { videoRef: RefObject<HTMLVideoElement | null>; sourceUrl?: string; sourceType?: 'mp4' | 'webm' | 'hls'; tracks: SubtitleTrack[]; audio: AudioPreference; audioAvailable: Record<AudioPreference, boolean>; onAudioChange: (audio: AudioPreference) => void; animeId: number; episode: number; next?: () => void; nextEpisode?: { number: number; title?: string; image: string; series: string }; local: boolean; children: ReactNode }) {
+export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks, audio, audioAvailable, onAudioChange, animeId, episode, next, nextEpisode, local, children, onError }: { videoRef: RefObject<HTMLVideoElement | null>; sourceUrl?: string; sourceType?: 'mp4' | 'webm' | 'hls'; tracks: SubtitleTrack[]; audio: AudioPreference; audioAvailable: Record<AudioPreference, boolean>; onAudioChange: (audio: AudioPreference) => void; animeId: number; episode: number; next?: () => void; nextEpisode?: { number: number; title?: string; image: string; series: string }; local: boolean; children: ReactNode; onError: (message: string) => void }) {
   const { preferences, update } = usePreferences();
   const track = preferences.subtitles && tracks.length ? Math.max(0, tracks.findIndex(entry => entry.language === 'en')) : -1;
   const [time, setTime] = useState(0), [duration, setDuration] = useState(0), [paused, setPaused] = useState(true), [muted, setMuted] = useState(false), [volume, setVolume] = useState(1), [buffered, setBuffered] = useState(0);
-  const [panel, setPanel] = useState(''), [cues, setCues] = useState<Cue[]>([]), [note, setNote] = useState(''), [full, setFull] = useState(false);
+  const [panel, setPanel] = useState(''), [cues, setCues] = useState<Cue[]>([]), [full, setFull] = useState(false), [note, setNote] = useState('');
   const [skip, setSkip] = useState<SkipTimesResponse>({status:'not-found'}), [autoNext, setAutoNext] = useState(() => { try { return localStorage.getItem('moewatch-autonext') !== 'false'; } catch { return true; } });
   const [countdown, setCountdown] = useState<number | null>(null), [idle, setIdle] = useState(false);
   const [remaining, setRemaining] = useState(false);
@@ -50,14 +51,14 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks
   useEffect(() => {
     setCues([]); setNote(''); const selected=tracks[track]; if (!selected) return;
     const controller=new AbortController();
-    fetch(selected.url,{signal:controller.signal}).then(async response => { if (!response.ok) throw new Error(); const text=await response.text(); const parsed=parseSubtitles(text,selected.format); if (!parsed.length) throw new Error(); if (!controller.signal.aborted) setCues(parsed); }).catch(() => { if (!controller.signal.aborted) setNote('Subtitles could not be loaded. Choose another track.'); });
+    fetch(selected.url,{signal:controller.signal}).then(async response => { if (!response.ok) throw new Error(); const text=await response.text(); const parsed=parseSubtitles(text,selected.format); if (!parsed.length) throw new Error(); if (!controller.signal.aborted) setCues(parsed); }).catch(() => { if (!controller.signal.aborted) setNote('Subtitles could not be loaded.'); });
     return () => controller.abort();
   }, [tracks,track]);
   useEffect(() => { if (countdown === null) return; if (countdown === 0) { setCountdown(null); nextRef.current?.(); return; } const timer=setTimeout(() => setCountdown(countdown-1),1000); return () => clearTimeout(timer); }, [countdown]);
   useEffect(() => { const update=() => setFull(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange',update); return () => document.removeEventListener('fullscreenchange',update); }, []);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); } }
-  function toggle() { const v=videoRef.current; if (!v) return; if (v.paused) void v.play().catch(() => setNote('Playback could not start. Try another source.')); else v.pause(); }
-  async function fullscreen() { try { if (document.fullscreenElement) await document.exitFullscreen(); else await videoRef.current?.closest('.watch-content')?.requestFullscreen(); } catch { setNote('Fullscreen is unavailable in this browser.'); } }
+  function toggle() { togglePlayback(videoRef, onError); }
+  async function fullscreen() { setNote(''); try { if (document.fullscreenElement) await document.exitFullscreen(); else await videoRef.current?.closest('.watch-content')?.requestFullscreen(); } catch { setNote('Fullscreen is unavailable in this browser.'); } }
   useEffect(() => {
     const key=(event:KeyboardEvent) => {
       if (event.key==='Escape' && panel) { setPanel(''); document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus(); return; }
@@ -85,7 +86,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks
     {active && <button className="skip-segment" onClick={() => seek(active.end)}>{active.label}<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 2.5v11L11 8zM12 2.5h2v11h-2z"/></svg></button>}
     {countdown!==null && <div className="next-countdown" role="status"><span>Next episode in {countdown}</span><button onClick={() => {setCountdown(null);next?.();}}>Play now</button><button onClick={() => setCountdown(null)}>Cancel</button></div>}
     <div className={'cinema-bottom'+(hidden?' is-idle':'')+(renderedPanel?' has-panel':'')} inert={hidden} aria-hidden={hidden}>
-      {note && <p className="cinema-note" role="status">{note}</p>}
+      {note && <p role="status">{note}</p>}
       {renderedPanel && <section key={renderedPanel} ref={panelRef} inert={!panel} aria-hidden={!panel} className={"cinema-panel"+(renderedPanel==='subtitles'?' subtitle-panel':'')+(!panel?' is-closing':'')} aria-label={renderedPanel==='settings'?'Playback settings':'Subtitle settings'} onKeyDown={event => {if(event.key==='Escape'){setPanel('');document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus();}}}>
         {renderedPanel==='settings'? <>{children}<div className="player-options"><label className="autonext-option"><input type="checkbox" checked={autoNext} disabled={local} onChange={event=>{setAutoNext(event.target.checked);setCountdown(null);try{localStorage.setItem('moewatch-autonext',String(event.target.checked));}catch{/* Playback remains usable without storage. */}}}/>Autonext</label></div></>: <>
           <div className="language-choice" role="group" aria-label="Subtitles">
