@@ -1,8 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_shell::{ShellExt, process::CommandChild};
-use std::{sync::Mutex, net::{TcpListener, TcpStream}, time::Duration};
-struct Server(Mutex<Option<CommandChild>>);
+use std::{sync::{Arc, Mutex}, net::{TcpListener, TcpStream}, time::Duration};
+#[derive(Clone)]
+struct Server(Arc<Mutex<Option<CommandChild>>>);
+impl Server {
+ fn stop(&self) { if let Some(child) = self.0.lock().unwrap().take() { let _ = child.kill(); } }
+}
+impl tauri::Resource for Server {
+ fn close(self: Arc<Self>) { self.stop(); }
+}
 fn main() {
  let app = tauri::Builder::default()
   .plugin(tauri_plugin_shell::init())
@@ -18,7 +25,10 @@ fn main() {
     .env("MOEWATCH_PORT", port.to_string())
     .env("MOEWATCH_SESSION_FILE", data.join("sessions.json").to_string_lossy().to_string())
     .env("MOEWATCH_STATIC_DIR", resources.to_string_lossy().to_string()).spawn()?;
-   app.manage(Server(Mutex::new(Some(child))));
+   let server = Server(Arc::new(Mutex::new(Some(child))));
+   // Updater exits bypass RunEvent::Exit but clear the resource table first.
+   app.resources_table().add(server.clone());
+   app.manage(server);
    let address = format!("127.0.0.1:{port}");
    let mut ready = false;
    for _ in 0..200 {
@@ -33,6 +43,6 @@ fn main() {
    Ok(())
   }).build(tauri::generate_context!()).expect("Unable to start Moewatch");
  app.run(|app, event| { if let tauri::RunEvent::Exit = event {
-  if let Some(server) = app.try_state::<Server>() { if let Some(child) = server.0.lock().unwrap().take() { let _ = child.kill(); } }
+  if let Some(server) = app.try_state::<Server>() { server.stop(); }
  }});
 }
