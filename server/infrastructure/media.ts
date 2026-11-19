@@ -1,13 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
-import { Agent as HttpAgent, request as httpRequest, type ClientRequestArgs, type IncomingMessage, type ServerResponse } from 'node:http';
+import { Agent as HttpAgent, request as httpRequest, type ClientRequestArgs, type IncomingMessage, type IncomingHttpHeaders, type ServerResponse } from 'node:http';
 import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 import { once } from 'node:events';
+import { Readable } from 'node:stream';
 import { ApiError } from './errors';
 import { TtlCache } from './cache';
+import type { MediaEncryption } from '../../shared/api';
+import { decodeGotakuPlaylist, decodeGotakuSegment } from '../extractors/gotaku';
+import { browserAvailable, browserRequest } from './browser';
 
-type PlaylistOptions = { playlistKey?: string; audioLanguage?: 'ja' | 'en' };
+type PlaylistOptions = { hls?: boolean; playlistKey?: string; audioLanguage?: 'ja' | 'en'; mediaEncryption?: MediaEncryption };
 type Token = { url: string; origin: string; headers: Record<string, string>; expires: number; key: string; playlist: PlaylistOptions };
 export const mediaTokenTtlMs = 2 * 60 * 60_000;
 const dnsCache = new TtlCache<{ address: string; family: 4 | 6 }>(256, 30_000);
@@ -74,20 +78,22 @@ function crossHostHeaders(headers: Record<string, string>): Record<string, strin
   return Object.fromEntries(Object.entries(headers).filter(([name]) => /^(referer|origin|user-agent|accept)$/i.test(name)));
 }
 
-export async function rewritePlaylist(text: string, base: URL, issue: (url: URL) => Promise<string>): Promise<string> {
+export async function rewritePlaylist(text: string, base: URL, issue: (url: URL, playlist: boolean) => Promise<string>): Promise<string> {
   const lines = text.split(/\r?\n/);
+  const master = lines.some(line => line.startsWith('#EXT-X-STREAM-INF:'));
   let references = 0;
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     if (line.startsWith('#')) {
       for (const reference of line.matchAll(/URI=("|')(.*?)\1/g)) {
         if (++references > 8192) throw new ApiError('UNSUPPORTED_MEDIA', 'Too many playlist assets', 502);
-        const target = await issue(new URL(reference[2], base));
+        const playlist = /^#EXT-X-(?:MEDIA|I-FRAME-STREAM-INF|IMAGE-STREAM-INF|RENDITION-REPORT):/.test(line);
+        const target = await issue(new URL(reference[2], base), playlist);
         lines[index] = lines[index].replace(reference[0], `URI=${reference[1]}${target}${reference[1]}`);
       }
     } else if (line.trim()) {
       if (++references > 8192) throw new ApiError('UNSUPPORTED_MEDIA', 'Too many playlist assets', 502);
-      lines[index] = await issue(new URL(line.trim(), base));
+      lines[index] = await issue(new URL(line.trim(), base), master);
     }
   }
   return lines.join('\n');
@@ -107,16 +113,54 @@ export function preparePlaylist(text: string, options: PlaylistOptions): string 
   const lines = text.split(/\r?\n/);
   const audio = lines.filter(line => /^#EXT-X-MEDIA:.*\bTYPE=AUDIO(?:,|$)/.test(line));
   if (!audio.length) return text;
-  const language = options.audioLanguage === 'ja' ? /\bLANGUAGE="(?:ja|jpn)"/i : /\bLANGUAGE="(?:en|eng)"/i;
+  const language = options.audioLanguage === 'ja' ? /\bLANGUAGE="(?:ja|jpn|Japanese)"/i : /\bLANGUAGE="(?:en|eng|English)"/i;
   const selected = audio.filter(line => language.test(line));
   const groups = new Set(audio.map(line => line.match(/\bGROUP-ID="([^"]+)"/)?.[1]));
   if ([...groups].some(group => !selected.some(line => line.includes(`GROUP-ID="${group}"`)))) throw new ApiError('UNSUPPORTED_MEDIA', 'Requested audio language is unavailable', 502);
-  return lines.filter(line => !audio.includes(line) || selected.includes(line)).map(line => selected.includes(line) ? line.replace(/\bDEFAULT=(?:YES|NO)/, 'DEFAULT=YES') : line).join('\n');
+  return lines.filter(line => !audio.includes(line) || selected.includes(line)).map(line => {
+    if (!selected.includes(line)) return line;
+    for (const attribute of ['DEFAULT', 'AUTOSELECT']) {
+      const pattern = new RegExp(`\\b${attribute}=(?:YES|NO)`);
+      line = pattern.test(line) ? line.replace(pattern, `${attribute}=YES`) : `${line},${attribute}=YES`;
+    }
+    return line;
+  }).join('\n');
 }
 
-async function upstream(url: URL, headers: Record<string, string>, method: 'GET' | 'HEAD', signal: AbortSignal, agents: ReturnType<typeof createMediaAgents>, redirects = 0): Promise<{ response: IncomingMessage; url: URL }> {
+export function mediaAssetKind(url: URL, type: string, options: PlaylistOptions): 'playlist' | 'gotaku-segment' | 'binary' {
+  if (options.mediaEncryption?.type === 'gotaku') {
+    if (/^\/p\/\d+\/\d{10}\/[A-Za-z0-9_-]{22}\/[A-Za-z0-9_-]+$/.test(url.pathname)) return 'playlist';
+    if (/^\/s\/\d+\/[A-Za-z0-9_-]+(?:\.[A-Za-z0-9]+)?$/.test(url.pathname)) return 'gotaku-segment';
+  }
+  return options.hls === true || url.pathname.toLowerCase().endsWith('.m3u8') || /mpegurl/i.test(type) ? 'playlist' : 'binary';
+}
+
+export function decodeMediaPlaylist(packet: Buffer, url: URL, options: PlaylistOptions): string {
+  const text = options.mediaEncryption?.type === 'gotaku' ? decodeGotakuPlaylist(packet, url, options.mediaEncryption) : packet.toString('utf8');
+  return preparePlaylist(text, options);
+}
+
+export async function* decodeMediaSegments(body: AsyncIterable<Buffer>, url: URL, offset: number, options: PlaylistOptions): AsyncGenerator<Buffer> {
+  for await (const chunk of body) {
+    yield options.mediaEncryption?.type === 'gotaku' ? decodeGotakuSegment(chunk, url, offset, options.mediaEncryption) : chunk;
+    offset += chunk.length;
+  }
+}
+
+type MediaResponse = AsyncIterable<Buffer> & { statusCode?: number; headers: IncomingHttpHeaders; destroy(): unknown; resume(): unknown };
+
+async function upstream(url: URL, headers: Record<string, string>, method: 'GET' | 'HEAD', signal: AbortSignal, agents: ReturnType<typeof createMediaAgents>, redirects = 0): Promise<{ response: MediaResponse; url: URL }> {
   if (redirects > 5) throw new ApiError('UPSTREAM_BLOCKED', 'Too many media redirects', 502);
   const pinned = await validated(url);
+  if (url.origin === 'https://media.settlar.io' && browserAvailable()) {
+    const result = await browserRequest(url, { signal, headers, method });
+    const bytes = Buffer.from(await result.arrayBuffer());
+    const response = Object.assign(Readable.from([bytes]), {
+      statusCode: result.status,
+      headers: { ...Object.fromEntries(result.headers), ...(method === 'GET' ? { 'content-length': String(bytes.length) } : {}) },
+    });
+    return { response, url };
+  }
   const response = await new Promise<IncomingMessage>((resolve, reject) => {
     const options = {
       method, headers, signal, timeout: 12_000,
@@ -141,6 +185,11 @@ async function upstream(url: URL, headers: Record<string, string>, method: 'GET'
 }
 
 export function createMediaProxy() {
+  function rewrite(text: string, url: URL, item: Token) {
+    return rewritePlaylist(text, url, (child, hls) => issue(child.href,
+      child.origin === item.origin ? item.headers : crossHostHeaders(item.headers),
+      item.expires, { ...item.playlist, hls }));
+  }
   const agents = createMediaAgents();
   const tokens = new Map<string, Token>();
   const tokenKeys = new Map<string, string>();
@@ -174,6 +223,7 @@ export function createMediaProxy() {
     const headers: Record<string, string> = { ...item.headers, 'Accept-Encoding': 'identity' };
     if (range) {
       if (!/^bytes=\d*-\d*(?:,\d*-\d*){0,4}$/.test(range)) throw new ApiError('INVALID_REQUEST', 'Invalid Range header', 400);
+      if (item.playlist.mediaEncryption && range.includes(',')) throw new ApiError('INVALID_REQUEST', 'Encrypted media requires a single byte range', 400);
       headers.Range = range;
     }
     const { response: source, url } = await upstream(new URL(item.url), headers, method, signal, agents);
@@ -182,17 +232,23 @@ export function createMediaProxy() {
       source.destroy();
       throw new ApiError(status === 403 ? 'UPSTREAM_BLOCKED' : 'UPSTREAM_ERROR', `Media upstream HTTP ${status}`, 502);
     }
-    const playlist = method === 'GET' && (url.pathname.toLowerCase().endsWith('.m3u8') || /mpegurl/i.test(String(source.headers['content-type'] ?? '')));
+    const kind = mediaAssetKind(url, String(source.headers['content-type'] ?? ''), item.playlist);
+    const playlist = method === 'GET' && kind === 'playlist';
     for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control']) {
       const value = source.headers[name];
-      if (value && !(playlist && name === 'content-length')) response.setHeader(name, value);
+      if (value && !(kind === 'playlist' && name === 'content-length')) response.setHeader(name, value);
     }
     response.setHeader('x-content-type-options', 'nosniff');
+    if (kind === 'gotaku-segment') response.setHeader('content-type', 'video/mp2t');
+    if (kind === 'playlist') response.setHeader('content-type', 'application/vnd.apple.mpegurl');
     if (!playlist) {
+      const contentRange = String(source.headers['content-range'] ?? '').match(/^bytes (\d+)-\d+\//);
+      if (kind === 'gotaku-segment' && status === 206 && !contentRange) { source.destroy(); throw new ApiError('UPSTREAM_ERROR', 'Invalid encrypted media range', 502); }
       response.writeHead(status);
       if (method === 'HEAD') { source.resume(); response.end(); return; }
       let bytes = 0;
-      for await (const chunk of source) {
+      const body = kind === 'gotaku-segment' ? decodeMediaSegments(source, url, contentRange ? Number(contentRange[1]) : 0, item.playlist) : source;
+      for await (const chunk of body) {
         if (signal.aborted) break;
         bytes += chunk.length;
         if (bytes > 2 * 1024 * 1024 * 1024) { source.destroy(); response.destroy(); return; }
@@ -208,8 +264,8 @@ export function createMediaProxy() {
       if (length > 2 * 1024 * 1024) { source.destroy(); throw new ApiError('UNSUPPORTED_MEDIA', 'Playlist too large', 502); }
       chunks.push(chunk);
     }
-    const text = preparePlaylist(Buffer.concat(chunks).toString('utf8'), item.playlist);
-    const rewritten = await rewritePlaylist(text, url, child => issue(child.href, child.origin === item.origin ? item.headers : crossHostHeaders(item.headers), item.expires, item.playlist));
+    const text = decodeMediaPlaylist(Buffer.concat(chunks), url, item.playlist);
+    const rewritten = await rewrite(text, url, item);
     response.setHeader('content-type', 'application/vnd.apple.mpegurl');
     response.writeHead(status);
     response.end(rewritten);
@@ -223,7 +279,8 @@ export function createMediaProxy() {
       throw Object.assign(new ApiError('UPSTREAM_ERROR', `Download source HTTP ${response.statusCode}`, 502), { retryable: [408, 429, 500, 502, 503, 504].includes(response.statusCode || 0) });
     }
     const type = String(response.headers['content-type'] || 'application/octet-stream');
-    if (url.pathname.toLowerCase().endsWith('.m3u8') || /mpegurl/i.test(type)) {
+    const kind = mediaAssetKind(url, type, item.playlist);
+    if (kind === 'playlist') {
       const chunks: Buffer[] = [];
       let size = 0;
       for await (const chunk of response) {
@@ -231,11 +288,11 @@ export function createMediaProxy() {
         if (size > 2 * 1024 * 1024) { response.destroy(); throw new ApiError('UNSUPPORTED_MEDIA', 'Playlist too large', 502); }
         chunks.push(chunk);
       }
-      const text = preparePlaylist(Buffer.concat(chunks).toString('utf8'), item.playlist);
-      const playlist = await rewritePlaylist(text, url, child => issue(child.href, child.origin === item.origin ? item.headers : crossHostHeaders(item.headers), item.expires, item.playlist));
+      const text = decodeMediaPlaylist(Buffer.concat(chunks), url, item.playlist);
+      const playlist = await rewrite(text, url, item);
       return { body: (async function* () { yield Buffer.from(playlist); })(), type: 'application/vnd.apple.mpegurl', length: Buffer.byteLength(playlist) };
     }
-    return { body: response as AsyncIterable<Buffer>, type, length: Number(response.headers['content-length']) || 0 };
+    return { body: kind === 'gotaku-segment' ? decodeMediaSegments(response, url, 0, item.playlist) : response as AsyncIterable<Buffer>, type: kind === 'gotaku-segment' ? 'video/mp2t' : type, length: Number(response.headers['content-length']) || 0 };
   }
   return { issue, handle, read, close: () => { agents.http.destroy(); agents.https.destroy(); } };
 }

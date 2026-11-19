@@ -35,11 +35,13 @@ fn main() {
    let listener = TcpListener::bind("127.0.0.1:17846")?;
    let port = listener.local_addr()?.port(); drop(listener);
    let data = app.path().app_data_dir()?; std::fs::create_dir_all(&data)?;
-   let resources = app.path().resource_dir()?.join("dist");
+   let resource_root = app.path().resource_dir()?;
+   let resources = resource_root.join("dist");
    let (_events, child) = app.shell().sidecar("moewatch-server")?
     .env("MOEWATCH_PORT", port.to_string())
     .env("MOEWATCH_DATA_DIR", data.to_string_lossy().to_string())
     .env("MOEWATCH_SESSION_FILE", data.join("sessions.json").to_string_lossy().to_string())
+    .env("MOEWATCH_BROWSER_EXECUTABLE", resource_root.join("provider-browser").join("chrome.exe").to_string_lossy().to_string())
     .env("MOEWATCH_STATIC_DIR", resources.to_string_lossy().to_string()).spawn()?;
    let server = Server(Arc::new(Mutex::new(Some(child))));
    // Updater exits bypass RunEvent::Exit but clear the resource table first.

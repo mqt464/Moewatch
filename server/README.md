@@ -10,12 +10,16 @@ One internal API normalizes metadata and playback for the existing frontend. Ani
 | --- | --- | --- |
 | `MOEWATCH_ANIKOTO_ORIGIN` | `https://anikototv.bz` | KotoPlay / AniKoto origin. |
 | `MOEWATCH_REANIME_ORIGIN` | `https://reanime.cz` | Re:Anime origin using the current API. |
-| `MOEWATCH_MIRURO_ORIGIN` | unset | Enables Miruro against an accessible first-party pipe origin. |
+| `MOEWATCH_MIRURO_ORIGIN` | `https://www.miruro.tv` | Miruro catalogue origin. The local browser handles blocked catalogue requests. |
+| `MOEWATCH_ANIPM_ORIGIN` | `https://ani.pm` | Ani.pm catalogue origin. The local browser handles Settlar sessions and media. |
+| `MOEWATCH_BROWSER_EXECUTABLE` | auto-detected | Chromium 157+ executable. Desktop builds include the verified browser revision. |
 | `MOEWATCH_HOST` | `127.0.0.1` | Standalone bind address. |
 | `MOEWATCH_PORT` | `3001` | Standalone port. |
 | `MOEWATCH_PUBLIC_ORIGIN` | unset | Explicit trusted reverse-proxy origin, when needed. |
 
 Origins must be HTTPS origins without paths or credentials. Restart after configuration changes. Never expose configuration or credentials through `VITE_*` variables. Provider status reports configuration, not continuous upstream health.
+
+Miruro and ani.pm enable automatically when the provider browser is available. For development, run `npx playwright install chromium` if no supported browser is installed. `npm run desktop:prepare` copies the installed Playwright Chromium into the desktop resources. This increases the installer size. Browser requests use hidden targets in an isolated temporary profile, retain the browser sandbox, pin public DNS addresses, block redirects and unrelated hosts, and keep session values on the server.
 
 This is a trusted-local-network service, not an authenticated public service. Host/origin checks reduce cross-site abuse and DNS rebinding; they do not replace authentication, TLS or deployment-level rate limits. Do not port-forward it. Only access media you are authorized to watch.
 
@@ -52,7 +56,7 @@ Playback body:
 }
 ```
 
-`provider` can be `auto`, `anikoto`, `reanime` or `miruro`; `audio` is `sub` or `dub`. Optional `serverId` is an opaque ID returned by the servers route.
+`provider` can be `auto`, `anikoto`, `reanime`, `gotaku`, `miruro`, `mkissa` or `anipm`; `audio` is `sub` or `dub`. Optional `serverId` is an opaque ID returned by the servers route. The registered but disabled providers report their limitations in `/providers` and the playback settings.
 
 Responses follow `shared/api.ts`. Errors contain `{ error: { code, message, provider? }, attempts? }`. Ambiguous title matches stay unresolved. An unavailable provider does not discard other providers' availability. Explicit provider episode/server lookups do not silently switch providers. Playback fallback prioritizes the requested server, then other compatible servers, then providers. Disabling fallback confines selection to the chosen provider/server; automatic mode uses the first configured provider.
 
@@ -82,7 +86,12 @@ The media proxy bounds tokens to 16,384 entries, playlists to 2 MiB and 8,192 re
 
 - **KotoPlay / AniKoto:** first-party AJAX search/episodes/server lookup; Megaplay/VidWish direct sources and static AES decoding. Source resolution, proxied HLS master/variant manifests, media segments and decoded browser playback were checked live on November 17, 2026. Upstream hosts can still change or reject requests.
 - **Re:Anime:** enabled by default. Current `/api/v1/search`, anime detail/episode routes and `/api/flix/:anilistId/:episode` server lookup. FlixCloud SvelteKit JSON is parsed without evaluating scripts. Its per-response WebAssembly mixer, PBKDF2 and AES-CBC resolve the stream URL and private playlist key. The media proxy decodes encoded playlists, retains the selected Japanese/English audio rendition, and rewrites nested playlists, segment keys and media URLs. Only opaque media tokens reach the browser. ASS subtitles retain dialogue and timing through the existing renderer, without typesetting or karaoke effects. Live Frieren episode 1 checks on November 18, 2026 verified sub and dub resolution, master/variant/audio playlists, 16-byte AES keys, video segments and ASS subtitles through the proxy. Headless Chromium decoded and played 1920x1080 video for both audio preferences. Upstream protocol changes may require decoder updates.
-- **Miruro:** first-party secure-pipe requests, compressed payload decoding, AniList-based episode selection and direct media parsing. Disabled by default because the investigated pipe returned HTTP 403. No Cloudflare/browser challenge bypass is included.
+- **Gotaku:** enabled by default. Search and title details match AniList IDs. Sealed episode/track APIs and the player handshake use the public client's AES-GCM and HKDF protocol. The proxy decrypts extensionless playlists and the first 8192 bytes of each masked MPEG-TS segment. It applies the same transforms when downloading, handles segment byte ranges, and keeps key material server-side. Hard-sub and dub servers are supported; soft-sub captions are not exposed yet. Live Cowboy Bebop episode 1 checks on November 18, 2026 verified sub/dub playback, completed 480p-preference downloads at the available 360p quality, and played both saved copies with streaming requests blocked. Alternate CDN failover was not verified.
+- **Miruro:** enabled when the provider browser is installed. The current `/api/v1/anime` catalogue uses repeating-XOR/gzip decoding and browser-origin requests. Catalogue audio remains unknown until the server list confirms it. Sub/soft-sub and dub identities stay separate, and shared masters retain only the requested audio language. Explicit HLS metadata lets the proxy rewrite extensionless playlists served with image MIME types. Aniwaves and Icarus are preferred over less reliable server paths. Live Cowboy Bebop episode 1 sub and dub played through Moewatch, completed full downloads, and played offline with upstream streaming blocked. The compiled Windows sidecar also resolved and served a live Frieren playlist.
+- **mKissa:** registered but disabled while integration continues. Search, detail-based AniList matching and per-audio episode lists work. Its ordinary browser client obtains signed episode responses. Fm-Hls was verified for Solo Leveling episode 1 sub and dub through Byse and n1mwq; Node could fetch the resulting playlists and transport-stream bytes. The adapter still needs the ordinary browser flows for episode lookup and player initialization before it can expose playback or downloads.
+- **ani.pm:** enabled when the provider browser is installed. Catalogue and bootstrap requests run directly; Settlar session and media requests use the normal browser transport. Effective audio is checked to prevent dub downgrades. Expiring key-proof headers stay on the server, and subtitles use the same protected delivery path. Live Attack on Titan episode 1 sub and dub played through Moewatch, completed full downloads including subtitles, and played offline with upstream streaming blocked. The compiled Windows sidecar also resolved and served a live Frieren playlist. The sampled streams had no HLS AES key tags, so live protected-key delivery remains unverified.
+
+Availability records can include `audioStatus: "unknown"` with an empty `audio` list. These episodes can be attempted for either preference, but actual playback and downloads still require a matching server. Unknown never means that a dub was verified, and fallback never substitutes Japanese audio for a requested English dub.
 
 Reference implementations informed protocol work: `n1yshi/Anikoto-API`, `walterwhite-69/ReAnime.to-API`, and `walterwhite-69/Miruro-API`. Their availability is not a runtime dependency. No third-party hosted API is required.
 

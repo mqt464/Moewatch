@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createCipheriv } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
 import { parseAnikotoSearch, parseAnikotoEpisodes, parseAnikotoServers } from './anikoto';
 import { parseReanimeSearch, parseReanimeEpisodes, parseReanimeServers } from './reanime';
-import { decodeMiruroPipe, parseMiruroEpisodes } from './miruro';
+import { parseMiruroEpisodes } from './miruro';
 import { idDecode, matching, media } from './common';
 import { decryptMegaplay } from '../extractors/megaplay';
 
@@ -48,7 +47,5 @@ test('ReAnime and Miruro parse direct site payloads', () => {
   assert.deepEqual(parseReanimeSearch({ data: [{ slug: 'show', title: 'Show', anilist: 10 }] }), [{ id: 'show', title: 'Show', anilistId: 10 }]);
   assert.equal(parseReanimeEpisodes([{ number: 1, title: 'Pilot' }], 'show')[0].number, 1);
   assert.equal(parseReanimeServers({ episode_links: [{ dataType: 'dub', serverName: 'HD-1', url: 'https://flixcloud.cc/e/id?v=2' }] })[0].audio, 'dub');
-  const raw = { providers: { kiwi: { episodes: { sub: [{ id: 'k:1', number: 1 }], dub: [{ id: 'k:2', number: 1 }] } } } };
-  assert.deepEqual(parseMiruroEpisodes(raw, 10)[0].audio, ['sub', 'dub']);
-  assert.deepEqual(decodeMiruroPipe(gzipSync(JSON.stringify(raw)).toString('base64url')), raw);
+  assert.deepEqual(parseMiruroEpisodes({ data: [{ episode_number: 1 }] }, 'NtG-RmIvubqYRTFExTD0_vejcY8Bplcn')[0].audio, []);
 });

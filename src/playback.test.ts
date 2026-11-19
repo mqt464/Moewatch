@@ -27,3 +27,13 @@ test('resume requires compatible runtimes and unfinished valid progress', () => 
   assert.equal(canResume(0, 1440, 1440), false);
   assert.equal(canResume(30, 1440, Infinity), false);
 });
+
+test('unknown catalogue audio remains selectable until the server list verifies it', () => {
+  const response: AvailabilityResponse = { animeId: 1, providers: [{ provider: 'miruro', status: 'available', episodes: [
+    { id: 'unknown', number: 1, kind: 'regular', audio: [], audioStatus: 'unknown' },
+    { id: 'absent', number: 2, kind: 'regular', audio: [] },
+    { id: 'known', number: 3, kind: 'regular', audio: ['sub'] },
+  ] }] };
+  assert.deepEqual(availableEpisodes(response, 'dub', 'miruro'), [1]);
+  assert.deepEqual(availableEpisodes(response, 'sub', 'miruro'), [1, 3]);
+});

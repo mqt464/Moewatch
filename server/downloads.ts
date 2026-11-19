@@ -173,6 +173,7 @@ export class DownloadService {
   }
 
   private async resolved(job: StoredSeries, episode: number, signal: AbortSignal, excluded: string[]) {
+    signal.throwIfAborted();
     const prepared = this.prepared;
     if (!excluded.length && prepared) {
       this.prepared = undefined;

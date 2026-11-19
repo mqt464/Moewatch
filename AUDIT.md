@@ -1,5 +1,17 @@
 # Initial release audit
 
+## Version 0.1.5 audit
+
+Reviewed the provider adapters, extractors, browser transport, media proxy, downloads, desktop packaging, settings and their tests.
+
+- Shared the duplicate playback and download playlist rewriting code, preserving header filtering and explicit HLS metadata.
+- Replaced a redundant browser staging path comparison with a parent-directory check.
+- Retained unfinished MKissa integration for later completion. It remains unconfigured in production. API regression coverage checks provider status, availability, playback and downloads without upstream calls.
+- Bumped npm and desktop versions to 0.1.5.
+
+Validation: 133 app/API tests, seven relay tests, 21 affected browser tests and the production build passed. Two opt-in live browser tests were skipped. Interactive installer and updater checks were not repeated.
+
+
 ## Version 0.1.4 hotfix audit
 
 Reviewed all pending changes to playback, scrub previews, error presentation, styles and browser tests.

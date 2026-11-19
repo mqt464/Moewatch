@@ -20,6 +20,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - run: npx playwright install chromium
       - run: npm test
       - run: npm run relay:test
       - uses: tauri-apps/tauri-action@v0

@@ -1,4 +1,4 @@
-export const providerIds = ['reanime', 'anikoto', 'miruro'] as const;
+export const providerIds = ['reanime', 'anikoto', 'miruro', 'anipm', 'gotaku', 'mkissa'] as const;
 export type ProviderId = typeof providerIds[number];
 export type AudioPreference = 'sub' | 'dub';
 export type ProviderPreference = ProviderId | 'auto';
@@ -7,7 +7,9 @@ export type ApiErrorBody = { error: { code: ApiErrorCode; message: string; provi
 export type AnimeIdentity = { id: number; title: string; romaji: string; year: number; format: string; episodes: number | null };
 export type ProviderTitle = { id: string; title: string; aliases?: string[]; anilistId?: number; year?: number; format?: string };
 export type TitleMatch = { status: 'matched'; title: ProviderTitle } | { status: 'ambiguous'; candidates: ProviderTitle[] } | { status: 'not-found' };
-export type ProviderEpisode = { id: string; number: number; title?: string; kind: 'regular' | 'special'; audio: AudioPreference[] };
+export type ProviderEpisode = { id: string; number: number; title?: string; kind: 'regular' | 'special'; audio: AudioPreference[]; audioStatus?: 'unknown' };
+// Unknown catalogue audio can be attempted; the server list must confirm the requested language.
+export const canTryEpisodeAudio = (episode: ProviderEpisode, audio: AudioPreference) => episode.audio.includes(audio) || episode.audioStatus === 'unknown';
 export type ProviderServer = { id: string; name: string; audio: AudioPreference };
 export type ProviderStatus = { id: ProviderId; name: string; configured: boolean; status: 'configured' | 'unconfigured'; note?: string };
 export type ProviderAvailability = { provider: ProviderId; status: 'available' | 'not-found' | 'ambiguous' | 'error'; titleId?: string; episodes: ProviderEpisode[]; error?: ApiErrorBody['error'] };
@@ -19,6 +21,7 @@ export type PlaybackAttempt = { provider: ProviderId; server?: string; code: Api
 export type PlaybackSource = { url: string; type: 'hls' | 'mp4' | 'webm'; quality?: string };
 export type SubtitleTrack = { url: string; language: string; label: string; format: 'vtt' | 'srt' | 'ass' };
 export type SkipInterval = { start: number; end: number };
-export type ResolvedPlayback = { thumbnail?: string; playlistKey?: string; audioLanguage?: 'ja' | 'en'; sources: PlaybackSource[]; subtitles: SubtitleTrack[]; intro?: SkipInterval; outro?: SkipInterval; expiresAt?: number; headers?: Record<string, string> };
-export type PlaybackResponse = Omit<ResolvedPlayback, 'headers' | 'thumbnail' | 'audioLanguage' | 'playlistKey'> & { provider: ProviderId; server: ProviderServer; episode: number; audio: AudioPreference; attempts: PlaybackAttempt[] };
+export type MediaEncryption = { type: 'gotaku'; keySeed: string; segmentBytes: 8192 };
+export type ResolvedPlayback = { thumbnail?: string; mediaEncryption?: MediaEncryption; playlistKey?: string; audioLanguage?: 'ja' | 'en'; sources: PlaybackSource[]; subtitles: SubtitleTrack[]; intro?: SkipInterval; outro?: SkipInterval; expiresAt?: number; headers?: Record<string, string> };
+export type PlaybackResponse = Omit<ResolvedPlayback, 'headers' | 'thumbnail' | 'audioLanguage' | 'playlistKey' | 'mediaEncryption'> & { provider: ProviderId; server: ProviderServer; episode: number; audio: AudioPreference; attempts: PlaybackAttempt[] };
 export type SkipTimesResponse = { status: 'available' | 'not-found' | 'unmapped' | 'unavailable'; malId?: number; intro?: SkipInterval; outro?: SkipInterval };

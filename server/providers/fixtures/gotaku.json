@@ -1,0 +1,22 @@
+﻿{
+  "search": {
+    "data": [
+      {"id": "g0srsw", "name": "Cowboy Bebop", "year": 1998, "format": "TV", "season": "Spring 1998"},
+      {"id": "iqfjuh", "name": "Cowboy Bebop: The Movie - Knockin' on Heaven's Door", "year": 2001, "format": "MOVIE", "season": "Summer 2001"}
+    ],
+    "meta": {"has_more": false, "limit": 6, "page": 1, "total": 2}
+  },
+  "details": {
+    "g0srsw": {"data": {"title": {"id": "g0srsw", "name": "Cowboy Bebop", "format": "TV", "year": 1998, "anilist_id": 1}}},
+    "iqfjuh": {"data": {"title": {"id": "iqfjuh", "name": "Cowboy Bebop: The Movie - Knockin' on Heaven's Door", "format": "MOVIE", "year": 2001, "anilist_id": 5}}}
+  },
+  "episodes": {
+    "data": [
+      {"id": "pzcaix", "number": 1, "label": "1", "name": "Urban Legend", "sub": true, "dub": true},
+      {"id": "sc44pq", "number": 5, "label": "5", "name": "Those Gathered", "sub": true, "dub": false}
+    ],
+    "meta": {"next_airing": {"number": 7, "airs_at": "2026-11-23T14:00:00Z"}}
+  },
+  "episode": {"data": {"id": "pzcaix", "number": 1, "label": "1", "hard_sub": true, "soft_sub": false, "dub": true}},
+  "embed": {"data": {"url": "https://gotakuplay.nl/embed/fixture", "skip": {"intro": [0, 118], "outro": [1324, 1418]}}}
+}

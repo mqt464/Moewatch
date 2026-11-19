@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { providerIds } from '../shared/api';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/**', route => route.abort());
@@ -88,7 +89,7 @@ test('provider names and icons stay readable across settings widths', async ({ p
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/settings/playback');
     const labels = page.locator('.settings-provider-name');
-    await expect(labels).toHaveCount(3);
+    await expect(labels).toHaveCount(providerIds.length);
     for (const label of await labels.all()) {
       const layout = await label.evaluate(element => {
         const icon = element.querySelector('img')!.getBoundingClientRect();
@@ -165,7 +166,7 @@ test('legacy playback defaults no longer affect local video', async ({ page }) =
   await expect(page.getByRole('switch', { name: 'Loop video' })).toHaveCount(0);
   await page.evaluate(() => localStorage.setItem('moewatch-settings-v1', JSON.stringify({ volume: 35, playbackSpeed: '1.5', loop: true })));
   await page.goto('/watch/154587/1');
-  await expect(page.getByText('no source could be found...', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Choose a local video')).toBeAttached();
   const bytes = await page.evaluate(async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 32;

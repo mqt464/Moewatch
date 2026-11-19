@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAccount } from '../AccountContext';
 import { usePreferences } from '../PreferencesContext';
-import { fetchProviders, providerNames } from '../api';
+import { fetchProviders, providerNames, providerIcons } from '../api';
 import { providerIds, type AudioPreference, type ProviderStatus } from '../../shared/api';
 import { ScrollArea } from '../ScrollArea';
 import { SettingRow, SettingsButton, SettingsCard, SettingsNotice, SettingsSelect, SettingsToggle } from './controls';
@@ -59,7 +59,7 @@ function PlaybackSettings() {
       <SettingsCard>
       {providerIds.map(id => {
         const provider = providers.find(entry => entry.id === id);
-        return <SettingRow key={id} title={<span className="settings-provider-name"><img src={`/providers/${id}.png`} alt="" width={20} height={20} />{providerNames[id]}</span>}><span className="setting-value">{loading ? 'Checking...' : error ? 'Unknown' : provider?.configured ? 'Configured' : 'Unavailable'}</span></SettingRow>;
+        return <SettingRow key={id} description={provider?.note} title={<span className="settings-provider-name"><img src={providerIcons[id]} alt="" width={20} height={20} />{providerNames[id]}</span>}><span className="setting-value">{loading ? 'Checking...' : error ? 'Unknown' : provider?.configured ? 'Configured' : 'Unavailable'}</span></SettingRow>;
       })}
       </SettingsCard>
       {error && <SettingsNotice error>{error}</SettingsNotice>}

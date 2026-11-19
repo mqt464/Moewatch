@@ -7,6 +7,7 @@ import type { Anime } from '../../src/catalog';
 import { createServer } from '../app';
 import { createMediaProxy } from '../infrastructure/media';
 import { ApiError } from '../infrastructure/errors';
+import { mkissa } from '../providers/mkissa';
 
 const anime: Anime = { id: 1, title: 'Example', romaji: 'Example', description: '', cover: '', banner: '', year: 2024, format: 'TV', episodes: 12, duration: 24, score: 80, genres: ['Action'], status: 'FINISHED', studios: [], characters: [], related: [] };
 const catalog = { async search() { return [anime]; }, async anime(id: number) { return id === 1 ? anime : null; } };
@@ -18,7 +19,7 @@ function provider(id: AnimeProvider['id'], resolveUrl = 'http://8.8.8.8/video.m3
     async match() { return { status: 'matched', title: { id: 'title', title: 'Example' } }; },
     async episodes() { return [{ id: 'episode-1', number: 1, kind: 'regular', audio: ['sub', 'dub'] }]; },
     async servers() { return [{ id: `${id}-server`, name: 'Main', audio: 'sub' }]; },
-    async resolve() { return { sources: [{ url: resolveUrl, type: 'hls' }], subtitles: [], playlistKey: Buffer.alloc(32, 7).toString('base64'), audioLanguage: 'ja', headers: { Referer: 'https://example.org', Authorization: 'secret' } }; },
+    async resolve() { return { sources: [{ url: resolveUrl, type: 'hls' }], subtitles: [], mediaEncryption: { type: 'gotaku', keySeed: Buffer.alloc(32, 1).toString('base64url'), segmentBytes: 8192 }, playlistKey: Buffer.alloc(32, 7).toString('base64'), audioLanguage: 'ja', headers: { Referer: 'https://example.org', Authorization: 'secret' } }; },
   };
 }
 
@@ -69,6 +70,7 @@ test('playback records failed server and returns opaque media URL', async () => 
   assert.equal(JSON.stringify(result).includes('8.8.8.8'), false);
   assert.equal(result.playlistKey, undefined);
   assert.equal(result.audioLanguage, undefined);
+  assert.equal(result.mediaEncryption, undefined);
   assert.equal(JSON.stringify(result).includes(Buffer.alloc(32, 7).toString('base64')), false);
 });
 
@@ -130,6 +132,28 @@ test('fallback tries another server without leaking headers or switching audio',
   } finally { instance.closeAllConnections(); await new Promise<void>(resolve => instance.close(() => resolve())); }
 });
 
+test('unknown catalogue audio requires an actual matching server and never downgrades a dub', async () => {
+  const unknown = provider('miruro');
+  unknown.episodes = async () => [{ id: 'unknown', number: 1, kind: 'regular', audio: [], audioStatus: 'unknown' }];
+  const resolved: string[] = [];
+  unknown.resolve = async id => { resolved.push(id); return { sources: [{ url: 'https://8.8.8.8/test.mp4', type: 'mp4' }], subtitles: [] }; };
+  for (const dubAvailable of [false, true]) {
+    unknown.servers = async () => [{ id: 'sub-only', name: 'Sub', audio: 'sub' }, ...(dubAvailable ? [{ id: 'dub', name: 'Dub', audio: 'dub' as const }] : [])];
+    const instance = createServer({ catalog, providers: [unknown] });
+    await new Promise<void>(resolve => instance.listen(0, '127.0.0.1', resolve));
+    const root = `http://127.0.0.1:${(instance.address() as AddressInfo).port}/api/v1`;
+    try {
+      const post = () => fetch(`${root}/playback`, { method: 'POST', body: JSON.stringify({ animeId: 1, episode: 1, provider: 'miruro', audio: 'dub', fallback: false }) });
+      const playback = await post();
+      assert.equal(playback.status, dubAvailable ? 200 : 503);
+      assert.deepEqual(resolved, dubAvailable ? ['dub'] : []);
+      if (dubAvailable) assert.equal((await playback.json()).audio, 'dub');
+      const response = await fetch(`${root}/anime/1/episodes?provider=miruro&audio=dub`);
+      assert.equal((await response.json()).episodes.length, 1);
+    } finally { instance.closeAllConnections(); await new Promise<void>(resolve => instance.close(() => resolve())); }
+  }
+});
+
 test('AniSkip endpoint rejects invalid identity and runtime before contacting upstreams', async () => {
  for (const path of ['anime/1/skip-times/1','anime/1/skip-times/1?duration=Infinity','anime/1/skip-times/1?duration=-1','anime/1/skip-times/1?duration=86401','anime/0/skip-times/1?duration=100']) {
   const response=await fetch(`${root}/api/v1/${path}`);assert.equal(response.status,400);assert.equal((await response.json()).error.code,'INVALID_REQUEST');
@@ -189,4 +213,23 @@ test('thumbnail lookup rejects private images and caches unavailable results wit
     assert.equal((await fetch(`${endpoint}/anime/1/episodes/0/thumbnail`)).status, 400);
     assert.equal((await fetch(`${endpoint}/anime/1/episodes/10001/thumbnail`)).status, 404);
   } finally { instance.closeAllConnections(); await new Promise<void>(resolve => instance.close(() => resolve())); }
+});
+
+
+test('MKissa remains unavailable through production API routes without contacting upstream', async t => {
+  const methods = ['search', 'match', 'episodes', 'servers', 'resolve'] as const;
+  for (const method of methods) t.mock.method(mkissa, method, async () => assert.fail('Disabled MKissa must not contact upstream'));
+  const app = createServer({ catalog, providers: [mkissa], episodeMetadata: async anime => anime });
+  await new Promise<void>(resolve => app.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve, reject) => app.close(error => error ? reject(error) : resolve())));
+  const base = 'http://127.0.0.1:' + (app.address() as AddressInfo).port + '/api/v1/';
+  const status = await (await fetch(base + 'providers')).json();
+  assert.equal(status.providers[0].configured, false);
+  assert.equal(status.providers[0].status, 'unconfigured');
+  const availability = await (await fetch(base + 'anime/1/availability')).json();
+  assert.equal(availability.providers[0].error.code, 'UNAVAILABLE');
+  const playback = await fetch(base + 'playback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ animeId: 1, episode: 1, provider: 'mkissa', fallback: false }) });
+  assert.equal(playback.status, 503);
+  const download = await fetch(base + 'downloads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ animeId: 1, provider: 'mkissa', fallback: false }) });
+  assert.equal(download.status, 503);
 });

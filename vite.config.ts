@@ -12,6 +12,6 @@ export default defineConfig(async () => {
       else next();
     });
   };
-  return { envDir: false as const, server: { watch: { ignored: ['**/artifacts/**', '**/test-results/**'] } }, plugins: [react(), { name: 'moewatch-api', configureServer: mount, configurePreviewServer: mount }] };
+  return { envDir: false as const, server: { watch: { ignored: ['**/artifacts/**', '**/test-results/**', '**/src-tauri/**'] } }, plugins: [react(), { name: 'moewatch-api', configureServer: mount, configurePreviewServer: mount }] };
 });
 

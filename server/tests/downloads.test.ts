@@ -10,6 +10,7 @@ import type { PlaybackResponse } from '../../shared/api';
 import { DownloadService } from '../downloads';
 import { createServer as createApiServer } from '../app';
 import { saveMedia, selectVariant, type DownloadReader } from '../download-media';
+import { preparePlaylist } from '../infrastructure/media';
 
 const anime: Anime = { id: 1, title: 'Offline example', romaji: 'Offline example', description: 'Saved synopsis', cover: 'https://example.com/cover.jpg', banner: 'https://example.com/banner.jpg', year: 2024, format: 'TV', episodes: 2, duration: 24, score: 80, genres: [], status: 'FINISHED', studios: [], characters: [], related: [], episodeArtwork: [{ number: 1, title: 'Pilot', thumbnail: 'https://example.com/episode.jpg' }] };
 const master = '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="ja",LANGUAGE="ja",URI="audio"\n#EXT-X-STREAM-INF:BANDWIDTH=4000000,RESOLUTION=1920x1080,AUDIO="ja"\n1080\n#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,AUDIO="ja"\n720';
@@ -53,6 +54,31 @@ test('HLS download keeps one quality, selected audio, keys and segments entirely
     const bandwidthOnly = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=4000000\nhigh\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\nlow';
     assert.match(selectVariant(bandwidthOnly, 720), /\nhigh$/);
   } finally { await rm(folder, { recursive: true, force: true }); }
+});
+
+test('dual-audio downloads save only the requested language after proxy decoding', async () => {
+  const mixed = '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="mixed",LANGUAGE="jpn",URI="ja",DEFAULT=YES\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="mixed",LANGUAGE="eng",URI="en",DEFAULT=NO\n#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720,AUDIO="mixed"\nvideo';
+  const key = Buffer.alloc(32, 9), encoded = Buffer.from(mixed);
+  for (let i = 0; i < encoded.length; i++) encoded[i] ^= key[i % 32];
+  for (const audioLanguage of ['ja', 'en'] as const) {
+    const folder = await mkdtemp(join(tmpdir(), 'moewatch-download-audio-'));
+    const requested: string[] = [];
+    const read: DownloadReader = async (url, signal) => {
+      signal.throwIfAborted(); requested.push(url);
+      const playlist = url === 'master' ? preparePlaylist(encoded.toString('base64'), { playlistKey: key.toString('base64'), audioLanguage }) : ['video', 'ja', 'en'].includes(url) ? `#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\n${url}-segment\n#EXT-X-ENDLIST` : undefined;
+      const body = Buffer.from(playlist ?? 'media');
+      return { type: playlist ? 'application/vnd.apple.mpegurl' : 'application/octet-stream', length: body.length, body: (async function* () { yield body; })() };
+    };
+    try {
+      const saved = await saveMedia({ url: 'master', directory: folder, read, quality: 720, signal: new AbortController().signal });
+      assert.ok(requested.includes(audioLanguage));
+      assert.equal(requested.includes(audioLanguage === 'ja' ? 'en' : 'ja'), false);
+      assert.equal(saved.files.filter(file => file.name.endsWith('.m3u8')).length, 3);
+      const localMaster = await readFile(join(folder, saved.entry), 'utf8');
+      assert.match(localMaster, new RegExp(`LANGUAGE="${audioLanguage === 'ja' ? 'jpn' : 'eng'}"`));
+      assert.doesNotMatch(localMaster, /\/media\/|https?:/);
+    } finally { await rm(folder, { recursive: true, force: true }); }
+  }
 });
 
 test('downloads survive restart, retain settings, save artwork and serve seekable files over LAN routes', async () => {

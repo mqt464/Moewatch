@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { curated } from '../src/catalog';
-import type { PlaybackRequest, ProviderId } from '../shared/api';
+import { providerIds, type PlaybackRequest, type ProviderId } from '../shared/api';
 
 async function fixture(page: Page) {
   const requests: PlaybackRequest[] = [];
@@ -29,34 +29,25 @@ async function fixture(page: Page) {
   return requests;
 }
 
-test('provider preferences persist and report configuration truthfully', async ({ page }) => {
+test('provider status reports configuration and limitations truthfully', async ({ page }) => {
   await fixture(page);
   await page.goto('/settings/playback');
-  await page.getByRole('combobox', { name: 'Preferred provider' }).selectOption('anikoto');
   await page.getByRole('combobox', { name: 'Preferred audio' }).selectOption('dub');
-  await page.getByRole('switch', { name: 'Provider fallback' }).uncheck();
   await page.reload();
-  await expect(page.getByRole('combobox', { name: 'Preferred provider' })).toHaveValue('anikoto');
   await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
-  await expect(page.getByRole('switch', { name: 'Provider fallback' })).not.toBeChecked();
   await expect(page.getByText('Origin required.')).toBeVisible();
   await expect(page.getByText('Configured', { exact: true })).toHaveCount(2);
-  await expect(page.getByRole('combobox', { name: 'Preferred provider' }).locator('option[value="reanime"]')).toBeDisabled();
-  await expect(page.getByRole('combobox', { name: 'Preferred provider' }).locator('option[value="reanime"]')).toContainText('Unavailable');
-  await expect(page.locator('.setting-row[aria-disabled="true"]')).toContainText('Re:Anime');
-  await expect(page.getByRole('combobox', { name: 'Preferred provider' }).locator('option[value="anikoto"]')).toBeEnabled();
-  await page.route('**/api/v1/providers', route => route.abort());
-  await page.getByRole('button', { name: 'Refresh status' }).click();
-  await expect(page.getByRole('combobox', { name: 'Preferred provider' }).locator('option[value="anikoto"]')).toBeDisabled();
+  const unavailable = page.locator('.setting-row').filter({ hasText: 'Re:Anime' });
+  await expect(unavailable).toContainText('Unavailable');
+  await expect(unavailable).toContainText('Origin required.');
+  await expect(page.locator('.settings-provider-name')).toHaveCount(providerIds.length);
 });
 
-test('provider selection stays disabled when configuration cannot be loaded', async ({ page }) => {
+test('provider statuses stay unknown when configuration cannot be loaded', async ({ page }) => {
   await fixture(page);
   await page.route('**/api/v1/providers', route => route.abort());
   await page.goto('/settings/playback');
-  const provider = page.getByRole('combobox', { name: 'Preferred provider' });
-  for (const id of ['anikoto', 'miruro', 'reanime']) await expect(provider.locator(`option[value="${id}"]`)).toBeDisabled();
-  await expect(provider.locator('option[value="auto"]')).toBeEnabled();
+  await expect(page.getByText('Unknown', { exact: true })).toHaveCount(providerIds.length);
 });
 
 test('series uses available episode numbers, not metadata episode count', async ({ page }) => {
@@ -99,13 +90,12 @@ test('watch disables providers without the selected episode and audio', async ({
   await expect(provider.locator('option[value="auto"]')).toBeEnabled();
 });
 
-test('provider failures keep local playback and retry accessible', async ({ page }) => {
+test('provider failures keep local playback accessible', async ({ page }) => {
   await fixture(page);
   await page.route('**/availability', route => route.fulfill({ json: { animeId: 154587, providers: [{ provider: 'anikoto', status: 'error', episodes: [], error: { code: 'UPSTREAM_BLOCKED', message: 'Provider blocked request' } }] } }));
   await page.goto('/watch/154587/1');
-  await expect(page.getByText('No video source', { exact: true })).toBeVisible();
+  await expect(page.getByText('no source could be found...', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Choose a local video')).toBeAttached();
-  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Playback settings', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Provider', exact: true }).locator('option[value="anikoto"]')).toBeDisabled();
   await page.setViewportSize({ width: 375, height: 900 });

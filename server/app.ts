@@ -3,6 +3,7 @@ import { createEpisodeMetadata } from './catalog/episodes';
 import { createServer as nodeServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { hostname, networkInterfaces } from 'node:os';
 import type { AnimeIdentity, AudioPreference, PlaybackAttempt, PlaybackRequest, ProviderPreference, ProviderAvailability, ProviderEpisode, ProviderServer } from '../shared/api';
+import { canTryEpisodeAudio, providerIds } from '../shared/api';
 import { curated, type Anime } from '../src/catalog';
 import { createAniListCatalog, type Catalog } from './catalog/anilist';
 import { ApiError, asApiError } from './infrastructure/errors';
@@ -14,6 +15,7 @@ import { AccountService } from './account';
 import { createSkipService } from './aniskip';
 import { createDiscordPresence, validateDiscordPlayback } from './discord';
 import { DownloadService } from './downloads';
+import { closeBrowser } from './infrastructure/browser';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -58,7 +60,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 function preference(value: string | null, allowAuto = false): ProviderPreference | undefined {
   if (value === null) return undefined;
   if (value === 'auto' && allowAuto) return value;
-  if (value === 'reanime' || value === 'anikoto' || value === 'miruro') return value;
+  if (providerIds.includes(value as typeof providerIds[number])) return value as typeof providerIds[number];
   throw new ApiError('INVALID_REQUEST', 'Invalid provider', 400);
 }
 
@@ -89,7 +91,10 @@ function validatePlayback(value: unknown): PlaybackRequest {
   return { animeId, episode, provider, serverId: request.serverId as string | undefined, audio, fallback: request.fallback as boolean | undefined };
 }
 
+let browserUsers = 0;
+
 export function createApiHandler(options: AppOptions = {}) {
+  let closed = false;
   const all = (options.providers ?? defaultProviders).map(cacheProvider);
   const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', hostname().toLowerCase(), ...Object.values(networkInterfaces()).flatMap(entries => entries?.map(entry => entry.address.toLowerCase()) ?? [])]);
   if (process.env.MOEWATCH_PUBLIC_ORIGIN) allowedHosts.add(new URL(process.env.MOEWATCH_PUBLIC_ORIGIN).hostname.toLowerCase());
@@ -144,7 +149,7 @@ export function createApiHandler(options: AppOptions = {}) {
     const titleId = await matched(provider, anime, signal);
     if (!titleId) return null;
     const episodes = await withTimeout(child => provider.episodes(titleId, child), signal);
-    return episodes.find(episode => episode.number === number && episode.kind === 'regular' && episode.audio.includes(audio)) ?? null;
+    return episodes.find(episode => episode.number === number && episode.kind === 'regular' && canTryEpisodeAudio(episode, audio)) ?? null;
   }
 
   async function providerThumbnail(anime: Anime, number: number, selected: ProviderPreference, audio: AudioPreference, fallback: boolean, parent: AbortSignal): Promise<string | null> {
@@ -203,7 +208,7 @@ export function createApiHandler(options: AppOptions = {}) {
             const resolved = await withTimeout(child => provider.resolve(server.id, child), providerSignal);
             if (!resolved.sources.length) throw new ApiError('UNAVAILABLE', 'Server returned no sources', 502, provider.id);
             const expiresAt = Math.min(resolved.expiresAt ?? Infinity, Date.now() + mediaTokenTtlMs);
-            const sources = await Promise.all(resolved.sources.map(async source => ({ ...source, url: await media.issue(source.url, resolved.headers, expiresAt, { playlistKey: resolved.playlistKey, audioLanguage: resolved.audioLanguage }) })));
+            const sources = await Promise.all(resolved.sources.map(async source => ({ ...source, url: await media.issue(source.url, resolved.headers, expiresAt, { hls: source.type === 'hls', playlistKey: resolved.playlistKey, audioLanguage: resolved.audioLanguage, mediaEncryption: resolved.mediaEncryption }) })));
             const subtitles = await Promise.all(resolved.subtitles.map(async subtitle => ({ ...subtitle, url: await media.issue(subtitle.url, resolved.headers, expiresAt) })));
             return { sources, subtitles, intro: resolved.intro, outro: resolved.outro, expiresAt, provider: provider.id, server, episode: request.episode, audio, attempts };
           } catch (error) {
@@ -277,7 +282,7 @@ export function createApiHandler(options: AppOptions = {}) {
         const enriched = await enrichEpisodes(anime, controller.signal);
         const found = await availability(anime, controller.signal);
         const candidates = ordered(all, input.provider, input.fallback !== false).map(provider => provider.id);
-        const episodes = found.filter(entry => candidates.includes(entry.provider)).flatMap(entry => entry.episodes).filter(episode => episode.kind === 'regular' && episode.audio.includes(input.audio || 'sub')).map(episode => episode.number);
+        const episodes = found.filter(entry => candidates.includes(entry.provider)).flatMap(entry => entry.episodes).filter(episode => episode.kind === 'regular' && canTryEpisodeAudio(episode, input.audio || 'sub')).map(episode => episode.number);
         if (!episodes.length) throw new ApiError('UNAVAILABLE', 'No episodes are available in your preferred audio.', 503);
         return send(response, 202, { download: await downloads.enqueue(enriched, episodes, input, quality) });
       }
@@ -381,7 +386,7 @@ export function createApiHandler(options: AppOptions = {}) {
             }
             const titleId = await matched(provider, anime, controller.signal);
             if (!titleId) continue;
-            const episodes = (await withTimeout(child => provider.episodes(titleId, child), controller.signal)).filter(episode => episode.audio.includes(audio));
+            const episodes = (await withTimeout(child => provider.episodes(titleId, child), controller.signal)).filter(episode => canTryEpisodeAudio(episode, audio));
             return send(response, 200, { animeId: id, provider: provider.id, episodes });
           } catch (error) {
             if (selected && selected !== 'auto') throw error;
@@ -395,7 +400,13 @@ export function createApiHandler(options: AppOptions = {}) {
       send(response, failure.status, { error: { code: failure.code, message: failure.message, provider: failure.provider }, attempts: (error as { attempts?: PlaybackAttempt[] })?.attempts });
     }
   };
-  return Object.assign(handler, { close: () => { discord.close(); media.close(); void downloads.close().catch(() => {}); } });
+  browserUsers++;
+  return Object.assign(handler, { close: () => {
+    if (closed) return;
+    closed = true;
+    discord.close(); media.close(); void downloads.close().catch(() => {});
+    if (--browserUsers === 0) void closeBrowser().catch(() => {});
+  } });
 }
 
 export function createServer(options: AppOptions = {}) {

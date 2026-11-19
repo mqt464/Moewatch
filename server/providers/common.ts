@@ -1,5 +1,8 @@
 import type { AnimeIdentity, ProviderId, ProviderTitle, ResolvedPlayback, TitleMatch } from '../../shared/api';
 import { ApiError } from '../infrastructure/errors';
+import { browserAvailable, browserRequest } from '../infrastructure/browser';
+
+export const providerBrowser = { available: browserAvailable, request: browserRequest };
 
 export const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -45,6 +48,25 @@ export async function request(url: string, provider: ProviderId, signal: AbortSi
   } catch (error) {
     if (signal.aborted) throw error;
     throw new ApiError(error instanceof DOMException && error.name === 'TimeoutError' ? 'TIMEOUT' : 'UPSTREAM_ERROR', 'Provider request failed', 502, provider);
+  }
+  const target = new URL(url);
+  const browserRoute = provider === 'miruro' && ['https://www.miruro.tv', 'https://miruro.tv'].includes(target.origin) && /^\/api\/v1\/anime(?:\/|$)/.test(target.pathname) ||
+    provider === 'anipm' && target.origin === 'https://embed.settlar.io' && target.pathname === '/api/embed/session';
+  if (response.status === 403 && browserRoute && providerBrowser.available()) {
+    // Drain the HTTP/2 error response before reusing its connection for later requests.
+    const reader = response.body?.getReader();
+    if (reader) {
+      let bytes = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.length;
+          if (bytes > 8 * 1024 * 1024) { await reader.cancel(); throw new ApiError('UPSTREAM_ERROR', 'Provider response is too large', 502, provider); }
+        }
+      } finally { reader.releaseLock(); }
+    }
+    response = await providerBrowser.request(url, { signal, maxBytes: 8 * 1024 * 1024 });
   }
   if (!response.ok) {
     await response.body?.cancel();

@@ -1,6 +1,7 @@
 import type { ApiErrorBody, ApiErrorCode, AvailabilityResponse, PlaybackRequest, PlaybackResponse, ProviderId, ProviderStatus, ServersResponse, AudioPreference } from '../shared/api';
 
-export const providerNames = { reanime: 'Re:Anime', anikoto: 'KotoPlay / AniKoto', miruro: 'Miruro' };
+export const providerNames = { reanime: 'Re:Anime', anikoto: 'KotoPlay / AniKoto', miruro: 'Miruro', mkissa: 'mKissa', gotaku: 'Gotaku', anipm: 'ani.pm' };
+export const providerIcons: Record<ProviderId, string> = { reanime: '/providers/reanime.png', anikoto: '/providers/anikoto.png', miruro: '/providers/miruro.png', gotaku: '/providers/gotaku.png', mkissa: '/providers/mkissa.svg', anipm: '/providers/anipm.svg' };
 
 export class ApiError extends Error {
   constructor(public code: ApiErrorCode, message: string, public attempts: ApiErrorBody['attempts'] = []) { super(message); }

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { fetchAvailability } from '../api';
 import type { AudioPreference, AvailabilityResponse, ProviderPreference } from '../../shared/api';
+import { canTryEpisodeAudio } from '../../shared/api';
 
 export function availableEpisodes(availability: AvailabilityResponse | null, audio: AudioPreference, provider: ProviderPreference = 'auto'): number[] {
-  return [...new Set((availability?.providers ?? []).filter(entry => entry.status === 'available' && (provider === 'auto' || entry.provider === provider)).flatMap(entry => entry.episodes.filter(episode => episode.kind === 'regular' && episode.audio.includes(audio)).map(episode => episode.number)))].sort((first, second) => first - second);
+  return [...new Set((availability?.providers ?? []).filter(entry => entry.status === 'available' && (provider === 'auto' || entry.provider === provider)).flatMap(entry => entry.episodes.filter(episode => episode.kind === 'regular' && canTryEpisodeAudio(episode, audio)).map(episode => episode.number)))].sort((first, second) => first - second);
 }
 
 export function useAvailability(animeId: number, enabled = true) {

@@ -19,4 +19,5 @@ VALIDATION.md
 
 src-tauri/target/
 src-tauri/binaries/
+src-tauri/provider-browser/
 *.key

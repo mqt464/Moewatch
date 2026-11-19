@@ -88,6 +88,15 @@ test('one series button starts downloads without a popup and header shows a mini
   expect(mobileArtwork!.height).toBe(mobileCopy!.height);
 });
 
+test('a Gotaku dub download retains the selected provider, audio and quality', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moewatch-settings-v1', JSON.stringify({ provider: 'gotaku', audio: 'dub', providerFallback: false, downloadQuality: 480 })));
+  const { requests } = await fixture(page);
+  await page.goto(`/anime/${anime.id}`);
+  await page.getByRole('button', { name: `Download all available episodes of ${anime.title}` }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toEqual({ animeId: anime.id, audio: 'dub', provider: 'gotaku', fallback: false, quality: 480 });
+});
+
 test('completed download uses an icon and can return to the undownloaded state', async ({ page }) => {
   await fixture(page, true);
   await page.goto(`/anime/${anime.id}`);
