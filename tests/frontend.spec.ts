@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0; localStorage.removeItem('moewatch.hero-history'); });
   await page.route('**/api/v1/**', route => route.abort());
 });
 
@@ -9,7 +10,7 @@ test('home has real artwork and works at desktop and mobile widths', async ({ pa
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Frieren/, level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Featured', exact: true })).toBeVisible();
-  await expect(page.locator('.hero-art')).toHaveJSProperty('naturalWidth', 1900);
+  await expect(page.getByRole('region', { name: 'Featured anime' }).locator('.hero-art')).toHaveJSProperty('naturalWidth', 1900);
   await page.locator('img.artwork').evaluateAll(images => images.forEach(image => { (image as HTMLImageElement).loading = 'eager'; }));
   await expect(page.locator('.artwork.is-loading')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/home-desktop.png', fullPage: true, animations: 'disabled' });

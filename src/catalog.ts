@@ -9,6 +9,8 @@ export type Anime = {
   description: string;
   cover: string;
   banner: string;
+  hasBanner?: boolean;
+  isAdult?: boolean;
   year: number;
   format: string;
   episodes: number | null;
@@ -41,6 +43,7 @@ type Media = {
   description?: string; coverImage?: { extraLarge?: string; large?: string }; bannerImage?: string;
   startDate?: { year?: number }; format?: string; episodes?: number; duration?: number;
   averageScore?: number; popularity?: number; genres?: string[]; status?: string;
+  isAdult?: boolean;
   streamingEpisodes?: { title?: string; thumbnail?: string }[];
   studios?: { nodes: { name: string }[] };
   characters?: { edges: { role: string; node: { name: { full: string }; image: { large: string } } }[] };
@@ -53,6 +56,7 @@ export function normalizeAnime(media: Media): Anime {
     id: Number(media.id), malId: Number.isSafeInteger(media.idMal) && media.idMal! > 0 ? media.idMal : undefined, title, romaji: media.title?.romaji || title,
     description: stripHtml(media.description), cover: media.coverImage?.extraLarge || media.coverImage?.large || '',
     banner: media.bannerImage || media.coverImage?.extraLarge || media.coverImage?.large || '',
+    hasBanner: Boolean(media.bannerImage), isAdult: media.isAdult,
     year: media.startDate?.year ?? 0, format: media.format || 'UNKNOWN', episodes: media.episodes ?? null,
     duration: media.duration ?? 0, score: media.averageScore ?? 0, genres: media.genres ?? [], status: media.status || 'UNKNOWN',
     popularity: Number.isSafeInteger(media.popularity) && media.popularity! > 0 ? media.popularity : undefined,

@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test';
 
 test.use({ reducedMotion: 'reduce' });
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0; localStorage.removeItem('moewatch.hero-history'); });
+});
+
 test('cached heroes show compact metadata chips and fractional five-star ratings', async ({ page }) => {
   await page.route('**/api/v1/**', route => route.abort());
   await page.goto('/');
@@ -34,17 +38,23 @@ test('cached heroes show compact metadata chips and fractional five-star ratings
   await expect(page.locator('.detail-hero .metadata-popularity')).toBeVisible();
 });
 
-test('featured hero refreshes audience data from AniList without replacing curated artwork', async ({ page }) => {
+test('featured hero uses trending metadata and its real banner', async ({ page }) => {
   await page.route('**/api/v1/**', route => {
-    if (!new URL(route.request().url()).pathname.endsWith('/anime/154587')) return route.abort();
-    return route.fulfill({ json: { anime: normalizeAnime({
+    if (!new URL(route.request().url()).pathname.endsWith('/catalog')) return route.abort();
+    return route.fulfill({ json: { anime: [normalizeAnime({
       id: 154587, title: { english: 'Frieren: Beyond Journey’s End' }, startDate: { year: 2023 },
       format: 'TV', episodes: 28, duration: 24, status: 'FINISHED', averageScore: 83,
-      popularity: 1234567, bannerImage: '/not-the-curated-banner.jpg',
-    }) } });
+      description: 'A trending adventure.',
+      popularity: 1234567, bannerImage: '/artwork/1-banner.jpg',
+    })] } });
   });
   await page.goto('/');
+  await expect(page.getByRole('img', { name: 'Community rating: 4.2 out of 5 stars', exact: true })).toBeVisible();
+  await expect(page.locator('.hero')).toHaveCount(1);
   await expect(page.locator('.hero .metadata-rating')).toHaveAttribute('aria-label', 'Community rating: 4.2 out of 5 stars');
   await expect(page.locator('.hero .metadata-popularity .sr-only')).toHaveText('Popularity: 1,234,567 AniList users');
-  await expect(page.locator('.hero-art')).toHaveAttribute('src', '/artwork/154587-banner.jpg');
+  await expect(page.locator('.hero-art')).toHaveAttribute('src', '/artwork/1-banner.jpg');
+  await page.locator('.hero-actions').getByRole('link', { name: 'Details' }).click();
+  await page.goBack();
+  await expect(page.locator('.hero-art')).toHaveAttribute('src', '/artwork/1-banner.jpg');
 });

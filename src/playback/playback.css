@@ -42,6 +42,10 @@
 .controls-hidden .subtitle-overlay { bottom: 7%; }
 .timeline { height: 28px; display: flex; align-items: center; position: relative; }
 .timeline::before { content: ''; position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(to right,#e7a0b4 var(--played),#b2adb0 var(--played),#b2adb0 var(--buffered),#ffffff40 var(--buffered)); pointer-events: none; }
+/* Keep segment marks within the rail; the seek thumb remains above them. */
+.timeline-segments { position: absolute; inset-inline: 6px; height: 3px; pointer-events: none; }
+.timeline-segment { position: absolute; height: 100%; background: #83aaa5; }
+.timeline-segment-outro { background: #9e8eaa; }
 .timeline input { appearance: none; width: 100%; height: 28px; margin: 0; background: transparent; cursor: pointer; position: relative; }
 .timeline input::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #e7a0b4; }
 .timeline input::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #e7a0b4; }
@@ -182,3 +186,17 @@
 .scrub-preview canvas { display: block; position: relative; width: min(192px, 40vw); aspect-ratio: 16/9; border-radius: 8px; background: #171317; left: clamp(min(96px, 20vw), var(--scrub-position), calc(100% - min(96px, 20vw))); transform: translateX(-50%); }
 .scrub-preview span { color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px #000; }
 .scrub-preview span { position: relative; left: var(--scrub-position); transform: translateX(-50%); }
+
+.player-backdrop { filter: blur(2px); transform: scale(1.01); z-index: 1; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .55; pointer-events: none; transition: opacity 220ms ease-out, filter 220ms ease-out; }
+.player-backdrop.is-revealed { opacity: 0; filter: blur(5px); }
+.watch-content .player-shell video { position: relative; }
+@media (prefers-reduced-motion: reduce) { .player-backdrop { transition: none; } }
+html[data-reduce-motion="true"] .player-backdrop { transition: none; }
+
+.watch-content :is(.player-loading, .player-empty) { z-index: 2; }
+
+/* Keep toolbar hit targets above native seek hit testing. */
+.cinema-toolbar { position: relative; z-index: 1; }
+.timeline input { touch-action: none; }
+.watch-content :is(button, input) { user-select: none; -webkit-user-select: none; }
+.cinema-panel { overscroll-behavior: contain; }

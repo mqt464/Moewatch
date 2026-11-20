@@ -2,7 +2,7 @@ import { normalizeAnime, type Anime } from '../../src/catalog';
 import { TtlCache } from '../infrastructure/cache';
 import { ApiError } from '../infrastructure/errors';
 
-const selection = `id title { english romaji native } description coverImage { extraLarge large } bannerImage
+const selection = `id isAdult title { english romaji native } description coverImage { extraLarge large } bannerImage
   startDate { year } format episodes duration averageScore popularity genres status studios(isMain: true) { nodes { name } }
   characters(perPage: 12, sort: ROLE) { edges { role node { name { full } image { large } } } }
   relations { edges { relationType node { id type isAdult title { english romaji } coverImage { large } } } }`;

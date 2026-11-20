@@ -3,14 +3,14 @@ import AxeBuilder from '@axe-core/playwright';
 import { curated } from '../src/catalog';
 import { readFileSync } from 'node:fs';
 const media=readFileSync('tests/fixtures/player-flower.mp4');
-async function fixture(page:Page, options: { dub?: boolean; subtitles?: boolean } = {}) {
+async function fixture(page:Page, options: { dub?: boolean; subtitles?: boolean; providerSkips?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; skipUnavailable?: boolean } = {}) {
  await page.route('**/api/v1/**',route=>{
  const path=new URL(route.request().url()).pathname;
  if(path.endsWith('/account')) return route.fulfill({json:{user:null,configured:false}});
  if(path.endsWith('/availability'))return route.fulfill({json:{animeId:154587,providers:[{provider:'anikoto',status:'available',episodes:[1,3].map(number=>({id:String(number),number,kind:'regular',audio:options.dub===false?['sub']:['sub','dub']}))}]}});
  if(path.endsWith('/servers'))return route.fulfill({json:{servers:[{id:'main',name:'Main',audio:'sub'},{id:'backup',name:'Backup',audio:'sub'}]}});
- if(path.endsWith('/playback'))return route.fulfill({json:{provider:'anikoto',server:{id:'main',name:'Main'},sources:[{url:'/media/fixture.mp4',type:'mp4',quality:'1080p'},{url:'/media/second.mp4',type:'mp4',quality:'720p'}],subtitles:options.subtitles===false?[]:[{url:'/media/sub.vtt',format:'vtt',label:'English',language:'en'}],attempts:[]}});
- if(path.includes('/skip-times/'))return route.fulfill({json:{status:'available',malId:52991,intro:{start:0,end:2},outro:{start:4,end:5}}});
+ if(path.endsWith('/playback'))return route.fulfill({json:{provider:'anikoto',server:{id:'main',name:'Main'},...options.providerSkips,sources:[{url:'/media/fixture.mp4',type:'mp4',quality:'1080p'},{url:'/media/second.mp4',type:'mp4',quality:'720p'}],subtitles:options.subtitles===false?[]:[{url:'/media/sub.vtt',format:'vtt',label:'English',language:'en'}],attempts:[]}});
+ if(path.includes('/skip-times/'))return route.fulfill({json:options.skipUnavailable?{status:'unavailable'}:{status:'available',malId:52991,intro:{start:0,end:2},outro:{start:4,end:5}}});
  if(path.endsWith('/anime/154587'))return route.fulfill({json:{anime:curated[0]}});
  return route.fulfill({json:{providers:[]}});
  });
@@ -406,4 +406,163 @@ test('failed availability checks can be retried from the mascot', async ({ page 
  await page.getByRole('button', { name: 'Retry source check', exact: true }).click();
  await expect.poll(() => page.locator('video').evaluate(v => (v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
  await expect(page.locator('.player-empty')).toHaveCount(0);
+});
+
+
+test('player artwork fades after the first frame and stays hidden during buffering', async ({ page }) => {
+ await fixture(page);
+ const backdrop = page.locator('.player-backdrop');
+ await expect(backdrop).toHaveClass(/is-revealed/);
+ await page.locator('video').evaluate(video => video.dispatchEvent(new Event('waiting')));
+ await expect(backdrop).toHaveClass(/is-revealed/);
+ await page.emulateMedia({ reducedMotion: 'reduce' });
+ await expect(backdrop).toHaveCSS('transition-duration', '0s');
+});
+
+
+test('artwork waits for a presented video frame rather than canplay', async ({ page }) => {
+ await page.addInitScript(() => {
+   HTMLVideoElement.prototype.requestVideoFrameCallback = function(callback) {
+     (window as unknown as { presentFrame: () => void }).presentFrame = () => callback(0, {} as VideoFrameCallbackMetadata);
+     return 1;
+   };
+   HTMLVideoElement.prototype.cancelVideoFrameCallback = () => {};
+ });
+ await fixture(page);
+ await expect(page.locator('.player-backdrop')).not.toHaveClass(/is-revealed/);
+ await page.locator('video').evaluate(video => video.dispatchEvent(new Event('canplay')));
+ await expect(page.locator('.player-backdrop')).not.toHaveClass(/is-revealed/);
+ await page.evaluate(() => (window as unknown as { presentFrame: () => void }).presentFrame());
+ await expect(page.locator('.player-backdrop')).toHaveClass(/is-revealed/);
+});
+
+test('Back to series shares the player surface with the destination hero', async ({ page }) => {
+ await fixture(page);
+ await page.evaluate(() => {
+   const start = document.startViewTransition.bind(document);
+   document.startViewTransition = ((update: () => Promise<void>) => start(async () => {
+     await update();
+     const hero = document.querySelector('.detail-hero');
+     if (hero) document.documentElement.dataset.returnSurface = getComputedStyle(hero).viewTransitionName;
+   })) as typeof document.startViewTransition;
+ });
+ await page.getByRole('link', { name: 'Back to series' }).click();
+ await expect(page).toHaveURL(/\/anime\/154587$/);
+ await expect(page.locator('html')).toHaveAttribute('data-return-surface', 'playback-surface');
+ await expect(page.locator('.detail-hero')).toBeVisible();
+});
+
+
+test('provider opening wins, AniSkip fills ending and timeline marks both intervals', async ({ page }) => {
+ await fixture(page, { providerSkips: { intro: { start: 0, end: 1 } } });
+ await expect(page.locator('.timeline-segment')).toHaveCount(2);
+ await expect(page.locator('.timeline-segment-intro')).toHaveCSS('background-color', 'rgb(131, 170, 165)');
+ await expect(page.locator('.timeline-segment-outro')).toHaveCSS('background-color', 'rgb(158, 142, 170)');
+ await page.getByRole('button', { name: 'Skip opening', exact: true }).click();
+ await expect.poll(() => page.locator('video').evaluate(v => (v as HTMLVideoElement).currentTime)).toBeCloseTo(1, 1);
+ await page.getByRole('slider', { name: 'Playback position' }).fill('4.2');
+ await expect(page.getByRole('button', { name: 'Skip ending', exact: true })).toBeVisible();
+ await page.getByRole('button', { name: 'Skip ending', exact: true }).click();
+ await expect.poll(() => page.locator('video').evaluate(v => (v as HTMLVideoElement).currentTime)).toBeGreaterThanOrEqual(5);
+ await page.getByLabel('Choose a local video').setInputFiles({ name: 'local.mp4', mimeType: 'video/mp4', buffer: media });
+ await expect(page.locator('.timeline-segment')).toHaveCount(0);
+ await expect(page.locator('.skip-segment')).toHaveCount(0);
+});
+
+test('complete provider timings skip AniSkip lookup and render at desktop and mobile sizes', async ({ page }) => {
+ const requests: string[] = [];
+ page.on('request', r => { if (r.url().includes('/skip-times/')) requests.push(r.url()); });
+ await fixture(page, { providerSkips: { intro: { start: 0, end: 1 }, outro: { start: 4, end: 5 } } });
+ await expect(page.locator('.timeline-segment')).toHaveCount(2);
+ for (const [name, width, height] of [['desktop', 1440, 900], ['mobile', 390, 844]] as const) {
+  await page.setViewportSize({ width, height });
+  await page.getByRole('slider', { name: 'Playback position' }).fill('2');
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.screenshot({ path: 'artifacts/player/segments-' + name + '.png' });
+  const rail = await page.locator('.timeline').boundingBox();
+  const marker = await page.locator('.timeline-segment-outro').boundingBox();
+  expect(marker!.x).toBeGreaterThan(rail!.x);
+  expect(marker!.x + marker!.width).toBeLessThanOrEqual(rail!.x + rail!.width);
+ }
+ expect(requests).toEqual([]);
+});
+
+test('provider timings survive AniSkip outage', async ({ page }) => {
+ await fixture(page, { providerSkips: { intro: { start: 0, end: 1 } }, skipUnavailable: true });
+ await expect(page.locator('.timeline-segment')).toHaveCount(1);
+ await expect(page.getByRole('button', { name: 'Skip opening', exact: true })).toBeVisible();
+});
+
+
+test('changing sources clears previous provider and fallback markers', async ({ page }) => {
+ await fixture(page, { providerSkips: { intro: { start: 0, end: 1 } } });
+ await expect(page.locator('.timeline-segment')).toHaveCount(2);
+ await page.route('**/api/v1/**/skip-times/*?*', route => route.fulfill({ json: { status: 'unavailable' } }));
+ await page.route('**/api/v1/**/playback', route => route.fulfill({ json: {
+  provider: 'anikoto', server: { id: 'backup', name: 'Backup' },
+  sources: [{ url: '/media/second.mp4', type: 'mp4' }], subtitles: [], attempts: [],
+ } }));
+ await page.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await page.getByRole('combobox', { name: 'Server', exact: true }).selectOption('backup');
+ await expect(page.locator('video')).toHaveAttribute('src', /second.mp4/);
+ await expect(page.locator('.timeline-segment')).toHaveCount(0);
+ await expect(page.locator('.skip-segment')).toHaveCount(0);
+});
+
+
+test('Resume restores progress and starts playing without another click', async ({ page }) => {
+ await fixture(page);
+ const duration = await page.locator('video').evaluate(v => (v as HTMLVideoElement).duration);
+ await page.evaluate(({ anime, duration }) => localStorage.setItem('moewatch-library-v1', JSON.stringify({ saved: [], progress: [{ anime, episode: 1, time: 2, duration, updated: Date.now() }] })), { anime: curated[0], duration });
+ await page.goto('/anime/154587');
+ await page.getByRole('link', { name: 'Resume episode 1', exact: true }).click();
+ await expect.poll(() => page.locator('video').evaluate(v => !(v as HTMLVideoElement).paused)).toBe(true);
+ await expect.poll(() => page.locator('video').evaluate(v => (v as HTMLVideoElement).currentTime)).toBeGreaterThan(2);
+});
+
+test.describe('touch player', () => {
+ test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+ test('touch seek preview clears after release and toolbar taps do not seek', async ({ page }) => {
+  await fixture(page);
+  const slider = page.getByRole('slider', { name: 'Playback position' });
+  await slider.tap();
+  await expect(page.locator('.scrub-preview')).toHaveCount(0);
+  const before = await page.locator('video').evaluate(v => v.currentTime);
+  await page.getByRole('button', { name: 'Play', exact: true }).tap();
+  await expect(page.locator('video')).toHaveJSProperty('paused', false);
+  await page.getByRole('button', { name: 'Pause', exact: true }).tap();
+  expect(Math.abs(await page.locator('video').evaluate(v => v.currentTime) - before)).toBeLessThan(1);
+  await page.getByRole('button', { name: 'Playback settings', exact: true }).tap();
+  await expect(page.getByRole('combobox', { name: 'Provider', exact: true })).toBeVisible();
+ });
+});
+
+test('touch drag releases its seek preview', async ({ page }) => {
+ await fixture(page);
+ const slider = page.getByRole('slider', { name: 'Playback position' });
+ await slider.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 7 });
+ await slider.dispatchEvent('pointermove', { pointerType: 'touch', pointerId: 7, clientX: 300 });
+ await expect(page.locator('.scrub-preview')).toBeVisible();
+ await slider.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 7 });
+ await expect(page.locator('.scrub-preview')).toHaveCount(0);
+});
+
+test.describe('landscape touch controls', () => {
+ test.use({ hasTouch: true, isMobile: true, viewport: { width: 844, height: 390 } });
+ test('toolbar edges and volume taps do not move playback position', async ({ page }) => {
+  await fixture(page);
+  const video = page.locator('.player-shell video');
+  const before = await video.evaluate(v => v.currentTime);
+  await page.getByRole('button', { name: 'Mute', exact: true }).tap({ position: { x: 22, y: 2 } });
+  await expect(video).toHaveJSProperty('muted', true);
+  await page.getByRole('slider', { name: 'Volume', exact: true }).tap();
+  await expect(video).toHaveJSProperty('muted', false);
+  expect(await video.evaluate(v => v.currentTime)).toBe(before);
+  await page.getByRole('button', { name: 'Play', exact: true }).tap({ position: { x: 22, y: 2 } });
+  await expect(video).toHaveJSProperty('paused', false);
+  await page.getByRole('button', { name: 'Pause', exact: true }).tap();
+  await expect(video).toHaveJSProperty('paused', true);
+  expect(Math.abs(await video.evaluate(v => v.currentTime) - before)).toBeLessThan(1);
+  await expect(page.locator('.scrub-preview')).toHaveCount(0);
+ });
 });

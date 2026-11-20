@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings2, Captions, SkipForward } from 'lucide-react';
-import type { AudioPreference, SkipTimesResponse, SubtitleTrack } from '../../shared/api';
+import type { AudioPreference, SkipInterval, SkipTimesResponse, SubtitleTrack } from '../../shared/api';
 import { apiRequest } from '../api';
 import { usePreferences } from '../PreferencesContext';
 import { clock, parseSubtitles, type Cue } from './subtitles';
+import { mergeSkipIntervals } from './skipIntervals';
 import { ScrubPreview } from './ScrubPreview';
 import { togglePlayback } from './Player';
 
-export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks, audio, audioAvailable, onAudioChange, animeId, episode, next, nextEpisode, local, children, onError }: { videoRef: RefObject<HTMLVideoElement | null>; sourceUrl?: string; sourceType?: 'mp4' | 'webm' | 'hls'; tracks: SubtitleTrack[]; audio: AudioPreference; audioAvailable: Record<AudioPreference, boolean>; onAudioChange: (audio: AudioPreference) => void; animeId: number; episode: number; next?: () => void; nextEpisode?: { number: number; title?: string; image: string; series: string }; local: boolean; children: ReactNode; onError: (message: string) => void }) {
+export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro, outro, tracks, audio, audioAvailable, onAudioChange, animeId, episode, next, nextEpisode, local, children, onError }: { videoRef: RefObject<HTMLVideoElement | null>; sourceUrl?: string; sourceType?: 'mp4' | 'webm' | 'hls'; intro?: SkipInterval; outro?: SkipInterval; tracks: SubtitleTrack[]; audio: AudioPreference; audioAvailable: Record<AudioPreference, boolean>; onAudioChange: (audio: AudioPreference) => void; animeId: number; episode: number; next?: () => void; nextEpisode?: { number: number; title?: string; image: string; series: string }; local: boolean; children: ReactNode; onError: (message: string) => void }) {
   const { preferences, update } = usePreferences();
   const track = preferences.subtitles && tracks.length ? Math.max(0, tracks.findIndex(entry => entry.language === 'en')) : -1;
   const [time, setTime] = useState(0), [duration, setDuration] = useState(0), [paused, setPaused] = useState(true), [muted, setMuted] = useState(false), [volume, setVolume] = useState(1), [buffered, setBuffered] = useState(0);
   const [panel, setPanel] = useState(''), [cues, setCues] = useState<Cue[]>([]), [full, setFull] = useState(false), [note, setNote] = useState('');
-  const [skip, setSkip] = useState<SkipTimesResponse>({status:'not-found'}), [autoNext, setAutoNext] = useState(() => { try { return localStorage.getItem('moewatch-autonext') !== 'false'; } catch { return true; } });
+  const [fallback, setFallback] = useState<{ key: string; value: SkipTimesResponse } | null>(null), [autoNext, setAutoNext] = useState(() => { try { return localStorage.getItem('moewatch-autonext') !== 'false'; } catch { return true; } });
   const [countdown, setCountdown] = useState<number | null>(null), [idle, setIdle] = useState(false);
   const [remaining, setRemaining] = useState(false);
   const [scrub, setScrub] = useState<{ time: number; position: number } | null>(null);
   useEffect(() => setScrub(null), [sourceUrl]);
+  const touchScrubbing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const panelRef = useRef<HTMLElement>(null);
   const [renderedPanel, setRenderedPanel] = useState('');
@@ -42,12 +44,17 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks
     events.forEach(event => element.addEventListener(event,sync)); element.addEventListener('ended',ended); sync();
     return () => { events.forEach(event => element.removeEventListener(event,sync)); element.removeEventListener('ended',ended); };
   }, [videoRef, sourceUrl, autoNext, local]);
+  const skipKey = JSON.stringify([animeId, episode, audio, sourceUrl, duration]);
+  const providerSkip = mergeSkipIntervals(duration, local || !sourceUrl ? {} : { intro, outro });
+  const skip = mergeSkipIntervals(duration, providerSkip, !local && fallback?.key === skipKey ? fallback.value : {});
   useEffect(() => {
-    setSkip({status:'not-found'}); if (!duration || local) return;
+    if (!duration || local || !sourceUrl || providerSkip.intro && providerSkip.outro) return;
     const controller = new AbortController();
-    apiRequest<SkipTimesResponse>(`/anime/${animeId}/skip-times/${episode}?duration=${duration.toFixed(3)}`,{signal:controller.signal}).then(value => { if (!controller.signal.aborted) setSkip(value); }).catch(() => { if (!controller.signal.aborted) setSkip({status:'unavailable'}); });
+    apiRequest<SkipTimesResponse>(`/anime/${animeId}/skip-times/${episode}?duration=${duration.toFixed(3)}`, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setFallback({ key: skipKey, value }); })
+      .catch(() => { if (!controller.signal.aborted) setFallback({ key: skipKey, value: { status: 'unavailable' } }); });
     return () => controller.abort();
-  }, [animeId,episode,duration,local,sourceUrl]);
+  }, [skipKey, local, !!providerSkip.intro, !!providerSkip.outro]);
   useEffect(() => {
     setCues([]); setNote(''); const selected=tracks[track]; if (!selected) return;
     const controller=new AbortController();
@@ -58,7 +65,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks
   useEffect(() => { const update=() => setFull(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange',update); return () => document.removeEventListener('fullscreenchange',update); }, []);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); } }
   function toggle() { togglePlayback(videoRef, onError); }
-  async function fullscreen() { setNote(''); try { if (document.fullscreenElement) await document.exitFullscreen(); else await videoRef.current?.closest('.watch-content')?.requestFullscreen(); } catch { setNote('Fullscreen is unavailable in this browser.'); } }
+  async function fullscreen() { setNote(''); try { if (document.fullscreenElement) await document.exitFullscreen(); else { const root = videoRef.current?.closest('.watch-content'); const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null; if (root?.requestFullscreen) await root.requestFullscreen(); else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen(); else setNote('Fullscreen is unavailable in this browser.'); } } catch { setNote('Fullscreen is unavailable in this browser.'); } }
   useEffect(() => {
     const key=(event:KeyboardEvent) => {
       if (event.key==='Escape' && panel) { setPanel(''); document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus(); return; }
@@ -78,7 +85,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks
     return () => {clearTimeout(timer.current);root?.removeEventListener('pointermove',wake);root?.removeEventListener('pointerdown',wake);root?.removeEventListener('keydown',wake);root?.removeEventListener('focusin',wake);};
   },[videoRef,sourceUrl]);
   const active=skip.intro && time>=skip.intro.start && time<skip.intro.end ? {label:'Skip opening',...skip.intro} : skip.outro && time>=skip.outro.start && time<skip.outro.end ? {label:'Skip ending',...skip.outro} : null;
-  const hidden=idle && !paused && !renderedPanel && countdown===null;
+  const hidden=idle && !scrub && !paused && !renderedPanel && countdown===null;
   useEffect(() => {const root=videoRef.current?.closest('.watch-content');root?.classList.toggle('controls-hidden',hidden);return () => root?.classList.remove('controls-hidden');},[hidden,videoRef]);
   const icon=(label:string,action:()=>void,child:ReactNode,disabled=false) => <button type="button" className="cinema-icon" aria-label={label} title={label} onClick={action} disabled={disabled}>{child}{label==='Next episode'?<span className="control-caption">Next</span>:label==='Fullscreen'||label==='Exit fullscreen'?<span className="control-caption">Fullscreen</span>:null}</button>;
   return <>
@@ -100,7 +107,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', tracks
         </>}
       </section>}
       <button type="button" className="player-time" title={remaining?'Show elapsed and total time':'Show time remaining'} aria-label={remaining?`-${clock(Math.max(0,duration-time))} remaining. Show elapsed and total time`:`${clock(time)} / ${clock(duration)}. Show time remaining`} onClick={()=>setRemaining(value=>!value)}>{remaining?`-${clock(Math.max(0,duration-time))} remaining`: <>{clock(time)} <span>/ {clock(duration)}</span></>}</button>
-      <div className="timeline" onPointerMove={event => { if (!duration) return; const bounds = event.currentTarget.getBoundingClientRect(); const position = Math.max(0, Math.min(1, (event.clientX - bounds.left - 6) / (bounds.width - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => setScrub(null)} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={() => setScrub({ time, position: duration ? time / duration : 0 })} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
+      <div className="timeline" onPointerDown={event => { touchScrubbing.current = event.pointerType === 'touch'; }} onPointerUp={event => { if (event.pointerType !== 'mouse') { touchScrubbing.current = false; setScrub(null); } }} onLostPointerCapture={() => { touchScrubbing.current = false; setScrub(null); }} onPointerMove={event => { if (!duration || event.pointerType === 'touch' && !touchScrubbing.current) return; const bounds = event.currentTarget.getBoundingClientRect(); const position = Math.max(0, Math.min(1, (event.clientX - bounds.left - 6) / (bounds.width - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => { touchScrubbing.current = false; setScrub(null); }} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><div className="timeline-segments" aria-hidden="true">{(['intro', 'outro'] as const).map(kind => { const interval = skip[kind]; return interval ? <span key={kind} className={`timeline-segment timeline-segment-${kind}`} style={{ left: `${interval.start / duration * 100}%`, width: `${(interval.end - interval.start) / duration * 100}%` }} /> : null; })}</div><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}${active ? active.label === 'Skip opening' ? ', opening' : ', ending' : ''}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setScrub({ time, position: duration ? time / duration : 0 }); }} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); if (touchScrubbing.current || event.currentTarget.matches(':focus-visible')) setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
       <div className="cinema-toolbar">
         <div className="transport">{icon(paused?'Play':'Pause',toggle,paused?<Play fill="currentColor"/>:<Pause fill="currentColor"/>,!sourceUrl)}<div className="volume-control">{icon(muted||!volume?'Unmute':'Mute',()=>{if(videoRef.current)videoRef.current.muted=!muted;},muted||!volume?<VolumeX/>:<Volume2/>)}<div className="volume-slider"><input style={{'--volume':`${(muted?0:volume)*100}%`} as React.CSSProperties} type="range" aria-label="Volume" aria-valuetext={`${Math.round((muted?0:volume)*100)}%`} min={0} max={1} step={0.05} value={muted?0:volume} onChange={event=>{if(videoRef.current){videoRef.current.volume=Number(event.target.value);videoRef.current.muted=false;}}}/><span className="volume-tooltip" aria-hidden="true" style={{left:`calc(${(muted?0:volume)*100}% + ${6-(muted?0:volume)*12}px)`}}>{Math.round((muted?0:volume)*100)}%</span></div></div></div>
         <div className="view-controls"><div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{icon(full?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),full?<Minimize/>:<Maximize/>)}</div>

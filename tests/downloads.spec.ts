@@ -108,6 +108,17 @@ test('completed download uses an icon and can return to the undownloaded state',
   await expect(page.locator('.downloads-trigger')).toHaveCount(0);
 });
 
+test('local storage includes other disk usage and unused space', async ({ page }) => {
+  await fixture(page, true);
+  await page.goto('/settings/playback');
+  const bar = page.locator('.download-storage-bar');
+  await expect(bar.locator('.storage-other')).toBeVisible();
+  await expect(page.locator('.download-storage-legend')).toContainText('Other');
+  await expect(page.locator('.download-storage-legend')).toContainText('Unused');
+  const widths = await bar.locator('span').evaluateAll(elements => elements.map(element => Number.parseFloat((element as HTMLElement).style.width)));
+  expect(widths).toEqual([0.5, 0.005, 0.0005, 49.4945, 50]);
+});
+
 test('Playback settings show storage categories and allow a LAN client to change the host folder', async ({ page }) => {
   const { requests } = await fixture(page, true);
   await page.goto('/settings/playback');

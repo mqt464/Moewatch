@@ -2,6 +2,7 @@ import { normalizeAnime } from '../src/catalog';
 import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0; localStorage.removeItem('moewatch.hero-history'); });
   await page.route('**/api/v1/**', route => route.abort());
 });
 

@@ -16,12 +16,13 @@ export function togglePlayback(videoRef: RefObject<HTMLVideoElement | null>, onE
   else video.pause();
 }
 
-export function Player({ source, videoRef, label, onSave, onReady, onBuffering, onError, onClick }: {
+export function Player({ source, videoRef, label, onSave, onReady, onBuffering, onFirstFrame, onError, onClick }: {
   source: PlaybackSource;
   videoRef: RefObject<HTMLVideoElement | null>;
   label: string;
   onSave: (force?: boolean, element?: HTMLVideoElement) => void;
   onReady: () => void;
+  onFirstFrame: () => void;
   onBuffering: (loading: boolean) => void;
   onError: (message: string) => void;
   onClick?: () => void;
@@ -33,13 +34,27 @@ export function Player({ source, videoRef, label, onSave, onReady, onBuffering, 
     video.volume = preferences.volume;
     video.muted = preferences.muted;
   }, [videoRef, source.url, preferences.volume, preferences.muted]);
-  const callbacks = useRef({ onError, onSave });
-  callbacks.current = { onError, onSave };
+  const callbacks = useRef({ onError, onSave, onFirstFrame });
+  callbacks.current = { onError, onSave, onFirstFrame };
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     let hls: Hls | undefined;
     let disposed = false;
+    let frame: number | undefined;
+    let paint = 0;
+    let nextPaint = 0;
+    // A decoded source is not necessarily on screen yet.
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      frame = video.requestVideoFrameCallback(() => { if (!disposed) callbacks.current.onFirstFrame(); });
+    }
+    const loadedFrame = () => {
+      if (frame !== undefined) return;
+      paint = requestAnimationFrame(() => {
+        nextPaint = requestAnimationFrame(() => { if (!disposed) callbacks.current.onFirstFrame(); });
+      });
+    };
+    video.addEventListener('loadeddata', loadedFrame, { once: true });
     async function attach(element: HTMLVideoElement) {
       if (source.type === 'hls') {
         const { default: Hls } = await import('hls.js');
@@ -61,6 +76,10 @@ export function Player({ source, videoRef, label, onSave, onReady, onBuffering, 
     void attach(video).catch(() => { if (!disposed) callbacks.current.onError('The player could not load. Reload the page.'); });
     return () => {
       disposed = true;
+      if (frame !== undefined) video.cancelVideoFrameCallback(frame);
+      cancelAnimationFrame(paint);
+      cancelAnimationFrame(nextPaint);
+      video.removeEventListener('loadeddata', loadedFrame);
       callbacks.current.onSave(true, video);
       hls?.destroy();
       video.removeAttribute('src');

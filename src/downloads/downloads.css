@@ -41,6 +41,8 @@
 .storage-video { background: var(--pink); }
 .storage-artwork { background: #b4a3cf; }
 .storage-subtitles { background: #8eb9ad; }
+.storage-other { background: #746a7a; }
+.storage-unused { background: #39323c; }
 .download-storage-legend { display: flex; flex-wrap: wrap; gap: 12px 20px; font-size: 11px; }
 .download-storage-legend > span { display: inline-flex; gap: 6px; align-items: center; }
 .download-storage-legend i { width: 7px; height: 7px; border-radius: 2px; }

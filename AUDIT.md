@@ -1,5 +1,17 @@
 # Initial release audit
 
+## Version 0.1.6 audit
+
+Reviewed every pending tracked and new file covering featured selection, catalog metadata, playback, touch controls, storage display, PWA assets and tests. Excluded Mkissa code as requested.
+
+- Removed an overridden player transition rule and merged duplicate home-content declarations.
+- Used the existing playback-link check for both string and object destinations.
+- Ignored Bun temporary build files in Vite to prevent EBUSY watcher crashes during desktop preparation.
+- Scoped the home artwork assertion to the accessible featured region so the skeleton copy cannot cause strict locator failures.
+- Bumped npm and desktop versions to 0.1.6.
+
+Validation: 139 app/API tests passed, two opt-in tests skipped, seven relay tests passed, 41 focused browser tests and the home artwork test passed. TypeScript unused-local and unused-parameter checks, production build, compiled desktop sidecar and isolated sidecar smoke test passed. The initial full browser run had 102 passes and 13 failures, including existing legacy expectations and failures affected by concurrent desktop compilation crashing the dev server. The focused rerun passed after the watcher fix. No other dead code or duplicate implementation was found in the pending changes. Interactive installation and installed-client upgrades were not tested locally. Native packaging runs in the release workflow.
+
 ## Version 0.1.5 audit
 
 Reviewed the provider adapters, extractors, browser transport, media proxy, downloads, desktop packaging, settings and their tests.

@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { curated } from '../src/catalog';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0; localStorage.removeItem('moewatch.hero-history'); });
+});
+
 test('My List keeps episode progress inside posters in every category', async ({ page }) => {
   await page.route('**/api/v1/**', route => route.abort());
   await page.addInitScript(({ titles }) => {

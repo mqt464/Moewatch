@@ -32,6 +32,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const [localSource, setLocalSource] = useState('');
   const [loading, setLoading] = useState(false);
   const [buffering, setBuffering] = useState(false);
+  const [revealedSource, setRevealedSource] = useState('');
   const [error, setError] = useState('');
   const [resumeNote, setResumeNote] = useState('');
   const [revision, setRevision] = useState(0);
@@ -81,10 +82,14 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   function loaded() {
     setResumeNote('');
     const player = video.current;
-    if (player && location.state?.autoplay) void player.play().catch(() => setResumeNote('Press Play to start the next episode.'));
-    if (!player || !progress || progress.episode !== episode) return;
-    if (canResume(progress.time, progress.duration, player.duration)) player.currentTime = progress.time;
-    else if (progress.time > 0 && progress.time < progress.duration * 0.95) setResumeNote('This source has a different runtime. Saved progress was not applied.');
+    if (!player) return;
+    if (progress?.episode === episode) {
+      if (canResume(progress.time, progress.duration, player.duration)) player.currentTime = progress.time;
+      else if (progress.time > 0 && progress.time < progress.duration * 0.95) setResumeNote('This source has a different runtime. Saved progress was not applied.');
+    }
+    if (location.state?.autoplay) void player.play().catch(failure => {
+      if (video.current === player && failure?.name !== 'AbortError') setResumeNote('Press Play to start playback.');
+    });
   }
 
   function chooseProvider(value: ProviderPreference) {
@@ -103,9 +108,10 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const playerError = error || (!localSource && availability.error ? 'Sources could not be checked. Try another provider.' : '');
   function reportError(message: string) { video.current?.pause(); setBuffering(false); setError(message); }
   return <div className="watch-content" aria-label="Episode player">
-    <header className="cinema-header"><Link className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
+    <header className="cinema-header"><Link viewTransition={!preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
     <div className="player-shell">
-      {source ? <Player key={source.url} source={source} videoRef={video} label={`${anime.title}, episode ${episode}`} onSave={save} onReady={loaded} onBuffering={setBuffering} onClick={() => togglePlayback(video, reportError)} onError={reportError} /> : null}
+      <img className={`player-backdrop${(source && revealedSource === source.url) || playerError || (!source && !findingSource) ? ' is-revealed' : ''}`} src={anime.banner || anime.cover} alt="" aria-hidden="true" />
+      {source ? <Player key={source.url} source={source} videoRef={video} label={`${anime.title}, episode ${episode}`} onSave={save} onReady={loaded} onFirstFrame={() => setRevealedSource(source.url)} onBuffering={setBuffering} onClick={() => togglePlayback(video, reportError)} onError={reportError} /> : null}
       {(playerError || (!source && !findingSource)) && <div className="player-empty" role={playerError ? 'alert' : 'status'}><img className="source-mascot" src="/error-mascot.png" alt="" width="180" height="188" /><p className="source-status">{playerError || 'no source could be found...'}</p>{!localSource && availability.error && <button onClick={() => { setError(''); availability.retry(); }}>Retry source check</button>}</div>}
       {((!source && findingSource) || (source && buffering && !error)) && <div className="player-loading" role="status" aria-label={source ? 'Loading video' : 'Finding video source'}><span className="buffer-spinner" /><span className="sr-only">{source ? 'Loading video' : 'Finding video source'}</span></div>}
       <input hidden type="file" accept="video/*,.mkv" aria-label="Choose a local video" onChange={event => {
@@ -116,7 +122,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     </div>
     {resumeNote && <p className="data-note" role="status">{resumeNote}</p>}
     
-    <CinemaControls onError={reportError} nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} sourceType={source?.type} tracks={localSource ? noTracks : effectivePlayback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
+    <CinemaControls intro={effectivePlayback?.intro} outro={effectivePlayback?.outro} onError={reportError} nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} sourceType={source?.type} tracks={localSource ? noTracks : effectivePlayback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
     <div className="source-controls" aria-label="Playback sources">
       <label>Provider<select disabled={Boolean(localSource || downloaded)} value={provider} onChange={event => chooseProvider(event.target.value as ProviderPreference)}><option value="auto">Automatic</option>{providerIds.map(id => { const available = availableEpisodes(availability.data, audio, id).includes(episode); return <option key={id} value={id} disabled={!available}>{providerNames[id]}{availability.loading ? ' (Checking...)' : !available ? ' (Unavailable)' : ''}</option>; })}</select></label>
       <label>Server<select disabled={!servers.length || Boolean(localSource)} value={serverId || playback?.server.id || ''} onChange={event => { save(true); setError(''); setPlayback(null); if (provider === 'auto' && selectedProvider) setProvider(selectedProvider); setServerId(event.target.value); }}><option value="">Automatic</option>{servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}</select></label>

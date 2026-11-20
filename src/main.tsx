@@ -1,14 +1,16 @@
+import './pwa';
 import { connectSharedStorage } from './sharedStorage';
 import { checkDesktopUpdates } from './settings/DesktopUpdates';
 void checkDesktopUpdates().catch(() => {});
 import { DocumentScrollbar } from './DocumentScrollbar';
 import React, { Component, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider, Link as RouterLink, NavLink as RouterNavLink, Outlet, useLocation, useParams, useSearchParams, type LinkProps, type NavLinkProps } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Link as RouterLink, NavLink as RouterNavLink, Outlet, useLocation, useViewTransitionState, useParams, useSearchParams, type LinkProps, type NavLinkProps } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight, Info, Play, Search, X } from 'lucide-react';
 import { Skeleton, SkeletonBox, SkulletProvider } from 'skullet/react';
 import { cachedAnime, curated, fetchAnime, fetchCatalog, type Anime } from './catalog';
 import { heroFraming } from './artwork';
+import { featuredHero } from './featured';
 import { HeroMetadata } from './HeroMetadata';
 import { emptyLibrary, episodeNumber, libraryStatus, type Library, type Progress } from './library';
 import { AccountProvider, useAccount } from './AccountContext';
@@ -30,7 +32,9 @@ const useLibrary = () => React.useContext(LibraryContext);
 const motionAllowed = () => typeof document.startViewTransition === 'function' && document.documentElement.dataset.reduceMotion !== 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function Link(props: LinkProps) {
-  return <RouterLink {...props} viewTransition={motionAllowed()} />;
+  const transitioning = useViewTransitionState(props.to);
+  const playbackLink = (typeof props.to === 'string' ? props.to : props.to.pathname)?.startsWith('/watch/');
+  return <RouterLink {...props} state={playbackLink ? { ...props.state, autoplay: true } : props.state} data-player-transition={transitioning && playbackLink || undefined} viewTransition={motionAllowed()} />;
 }
 
 function NavLink(props: NavLinkProps) {
@@ -133,7 +137,7 @@ function Carousel({ title, href, count, wide = false, children }: { title: strin
 const homeGenres = ['Action', 'Adventure', 'Slice of Life'];
 
 function Home() {
-  const [featured, setFeatured] = useState(curated[0]);
+  const [featured, setFeatured] = useState(featuredHero.current);
   const { library } = useLibrary();
   const [titles, setTitles] = useState<Anime[] | null>(null);
   const [live, setLive] = useState(false);
@@ -143,27 +147,27 @@ function Home() {
   useEffect(() => {
     const controller = new AbortController();
     setOffline(false);
-    fetchAnime(curated[0].id, controller.signal).then(anime => {
-      if (anime?.id === curated[0].id && !controller.signal.aborted) setFeatured({ ...anime, cover: curated[0].cover, banner: curated[0].banner });
-    }).catch(() => { if (!controller.signal.aborted) setOffline(true); });
     [undefined, ...homeGenres].forEach(genre => {
       const fallback = genre ? curated.filter(anime => anime.genres.includes(genre)) : curated;
       fetchCatalog({ genre, signal: controller.signal }).then(results => {
         if (controller.signal.aborted) return;
         if (genre) setCategories(current => ({ ...current, [genre]: results }));
-        else { setTitles(results.length ? results : curated); setLive(results.length > 0); }
+        else { setTitles(results.length ? results : curated); setLive(results.length > 0); setFeatured(featuredHero.select(results)); }
       }).catch(() => {
         if (controller.signal.aborted) return;
         if (genre) setCategories(current => ({ ...current, [genre]: fallback }));
-        else setTitles(curated);
+        else { setTitles(curated); setFeatured(featuredHero.select([])); }
         setOffline(true);
       });
     });
     return () => controller.abort();
   }, [retry]);
   const watching = library.saved.filter(anime => libraryStatus(library, anime) === 'CURRENT');
-  const resume = library.progress.find(item => item.anime.id === featured.id);
+  const resume = library.progress.find(item => item.anime.id === featured?.id);
   return <>
+    <Skeleton id="home-hero" data={featured} sample={curated[0]} label="Loading featured anime">{featured =>
+    <div className="home-hero" style={heroFraming(featured.id)}>
+    <div className="hero-ambience" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(featured.banner || featured.cover)})` }} />
     <section className="hero" aria-label="Featured anime" style={heroFraming(featured.id)}>
       <Artwork className="hero-art" src={featured.banner || featured.cover} eager />
       <div className="hero-shade" />
@@ -177,6 +181,8 @@ function Home() {
         </div>
       </div>
     </section>
+    </div>
+    }</Skeleton>
     <div className="content-wrap home-content">
       {offline && <div className="notice" role="status"><Info aria-hidden="true" size={17} /><p>AniList updates unavailable. Showing cached titles where needed.</p><button onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
       {watching.length > 0 && <Carousel title="Watching" count={watching.length}>
@@ -281,6 +287,7 @@ function Series() {
 }
 
 function SeriesContent({ anime }: { anime: Anime }) {
+  const returningToSeries = useViewTransitionState(`/anime/${anime.id}`);
   const { library } = useLibrary();
   const [tab, setTab] = useState('Episodes');
   const [episodePage, setEpisodePage] = useState(0);
@@ -295,7 +302,7 @@ function SeriesContent({ anime }: { anime: Anime }) {
   const count = episodeNumbers.length;
   const episodeKey = episodeNumbers.join(',');
   useEffect(() => setEpisodePage(0), [anime.id, episodeKey]);
-  return <><section className="detail-hero" style={heroFraming(anime.id)}><Artwork className="hero-art" src={anime.banner || anime.cover} eager /><Artwork className="detail-mobile-art" src={anime.cover} eager /><div className="hero-shade" /><div className="content-wrap detail-heading"><Link className="back-link" to="/browse"><ArrowLeft aria-hidden="true" size={17} />Search</Link><h1>{anime.title}</h1><HeroMetadata anime={anime} /><div className="hero-actions"><Link className="button primary" to={`/watch/${anime.id}/${progress?.episode || streamingEpisodes[0] || 1}`}><Play aria-hidden="true" size={17} fill="currentColor" />{progress ? `Resume episode ${progress.episode}` : `Watch episode ${streamingEpisodes[0] || 1}`}</Link><ListStatus anime={anime} /><DownloadButton anime={anime} /></div></div></section><div className="content-wrap detail-content"><button className="series-details-toggle" aria-expanded={detailsExpanded} aria-controls="series-facts" onClick={() => setDetailsExpanded(!detailsExpanded)}>Series details<ChevronRight aria-hidden="true" size={16} /></button><section id="series-facts" className={detailsExpanded ? "synopsis details-expanded" : "synopsis"}><div><p id="series-synopsis" className="synopsis-copy expanded">{!synopsisExpanded && anime.description.length > 240 ? anime.description.slice(0, 240).replace(/\s+\S*$/, '') + '\u2026' : anime.description || 'Synopsis unavailable.'}</p>{anime.description.length > 240 && <button className="synopsis-toggle" aria-expanded={synopsisExpanded} aria-controls="series-synopsis" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{synopsisExpanded ? 'Show less' : 'Show more'}</button>}</div><dl><div><dt>Genres</dt><dd className="genres-list" title={anime.genres.join(', ') || 'Unknown'}>{anime.genres.join(', ') || 'Unknown'}</dd></div><div><dt>Studio</dt><dd>{anime.studios.join(', ') || 'Not announced'}</dd></div><div><dt>Episode length</dt><dd>{anime.duration ? `${anime.duration} minutes` : 'Not announced'}</dd></div><div><dt>Status</dt><dd>{anime.status.replaceAll('_', ' ').toLowerCase()}</dd></div></dl></section><div className="detail-tabs" role="tablist" aria-label="Series information">{['Episodes', 'Characters', 'Related'].map(value => <button role="tab" key={value} id={`tab-${value}`} aria-selected={tab === value} aria-controls="series-panel" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs = ['Episodes', 'Characters', 'Related']; const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }} onClick={() => setTab(value)}>{value}{value === 'Episodes' && count ? <span>{count}</span> : null}</button>)}</div><section id="series-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="series-panel">{tab === 'Episodes' ? <><div className="episode-toolbar"><div className="episode-heading">{count && count > 24 ? <select aria-label="Episode range" value={episodePage} onChange={event => setEpisodePage(Number(event.target.value))}>{Array.from({ length: Math.ceil(count / 24) }, (_, index) => <option key={index} value={index}>Episodes {episodeNumbers[index * 24]}–{episodeNumbers[Math.min(count, (index + 1) * 24) - 1]}</option>)}</select> : <span>{count ? `${count} episodes` : 'Schedule not announced'}</span>}</div>{(availability.loading || streamingEpisodes.length > 0) && <p className="data-note" role="status">{availability.loading ? 'Checking streaming availability\u2026' : audioPending ? 'Audio availability will be checked when you choose an episode.' : 'Available episodes for your audio and provider preferences.'}</p>}</div>{count ? <div className="episodes-grid">{episodeNumbers.slice(episodePage * 24, (episodePage + 1) * 24).map(episode => {
+  return <><section className="detail-hero" data-player-return={returningToSeries || undefined} style={heroFraming(anime.id)}><Artwork className="hero-art" src={anime.banner || anime.cover} eager /><Artwork className="detail-mobile-art" src={anime.cover} eager /><div className="hero-shade" /><div className="content-wrap detail-heading"><Link className="back-link" to="/browse"><ArrowLeft aria-hidden="true" size={17} />Search</Link><h1>{anime.title}</h1><HeroMetadata anime={anime} /><div className="hero-actions"><Link className="button primary" to={`/watch/${anime.id}/${progress?.episode || streamingEpisodes[0] || 1}`}><Play aria-hidden="true" size={17} fill="currentColor" />{progress ? `Resume episode ${progress.episode}` : `Watch episode ${streamingEpisodes[0] || 1}`}</Link><ListStatus anime={anime} /><DownloadButton anime={anime} /></div></div></section><div className="content-wrap detail-content"><button className="series-details-toggle" aria-expanded={detailsExpanded} aria-controls="series-facts" onClick={() => setDetailsExpanded(!detailsExpanded)}>Series details<ChevronRight aria-hidden="true" size={16} /></button><section id="series-facts" className={detailsExpanded ? "synopsis details-expanded" : "synopsis"}><div><p id="series-synopsis" className="synopsis-copy expanded">{!synopsisExpanded && anime.description.length > 240 ? anime.description.slice(0, 240).replace(/\s+\S*$/, '') + '\u2026' : anime.description || 'Synopsis unavailable.'}</p>{anime.description.length > 240 && <button className="synopsis-toggle" aria-expanded={synopsisExpanded} aria-controls="series-synopsis" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{synopsisExpanded ? 'Show less' : 'Show more'}</button>}</div><dl><div><dt>Genres</dt><dd className="genres-list" title={anime.genres.join(', ') || 'Unknown'}>{anime.genres.join(', ') || 'Unknown'}</dd></div><div><dt>Studio</dt><dd>{anime.studios.join(', ') || 'Not announced'}</dd></div><div><dt>Episode length</dt><dd>{anime.duration ? `${anime.duration} minutes` : 'Not announced'}</dd></div><div><dt>Status</dt><dd>{anime.status.replaceAll('_', ' ').toLowerCase()}</dd></div></dl></section><div className="detail-tabs" role="tablist" aria-label="Series information">{['Episodes', 'Characters', 'Related'].map(value => <button role="tab" key={value} id={`tab-${value}`} aria-selected={tab === value} aria-controls="series-panel" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs = ['Episodes', 'Characters', 'Related']; const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }} onClick={() => setTab(value)}>{value}{value === 'Episodes' && count ? <span>{count}</span> : null}</button>)}</div><section id="series-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="series-panel">{tab === 'Episodes' ? <><div className="episode-toolbar"><div className="episode-heading">{count && count > 24 ? <select aria-label="Episode range" value={episodePage} onChange={event => setEpisodePage(Number(event.target.value))}>{Array.from({ length: Math.ceil(count / 24) }, (_, index) => <option key={index} value={index}>Episodes {episodeNumbers[index * 24]}–{episodeNumbers[Math.min(count, (index + 1) * 24) - 1]}</option>)}</select> : <span>{count ? `${count} episodes` : 'Schedule not announced'}</span>}</div>{(availability.loading || streamingEpisodes.length > 0) && <p className="data-note" role="status">{availability.loading ? 'Checking streaming availability\u2026' : audioPending ? 'Audio availability will be checked when you choose an episode.' : 'Available episodes for your audio and provider preferences.'}</p>}</div>{count ? <div className="episodes-grid">{episodeNumbers.slice(episodePage * 24, (episodePage + 1) * 24).map(episode => {
   const artwork = anime.episodeArtwork?.find(item => item.number === episode);
   const current = progress?.episode === episode;
   return <Link to={'/watch/' + anime.id + '/' + episode} className={'episode-row' + (current ? ' is-current' : '')} key={episode}>

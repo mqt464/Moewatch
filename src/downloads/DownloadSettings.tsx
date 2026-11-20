@@ -24,12 +24,22 @@ export function DownloadSettings() {
   }
   const storage = data?.storage;
   const total = storage?.total || 0;
+  const capacity = storage?.capacity || 0;
+  const segments = [
+    { category: 'video', label: 'Video', bytes: storage?.video || 0 },
+    { category: 'artwork', label: 'Artwork', bytes: storage?.artwork || 0 },
+    { category: 'subtitles', label: 'Subtitles', bytes: storage?.subtitles || 0 },
+    ...(capacity ? [
+      { category: 'other', label: 'Other', bytes: Math.max(0, capacity - storage!.free - total) },
+      { category: 'unused', label: 'Unused', bytes: storage!.free },
+    ] : []),
+  ];
   return <section className="download-settings" aria-labelledby="downloads-settings-heading"><h2 id="downloads-settings-heading" className="settings-provider-heading">Downloads</h2>
     <SettingsCard>
       <SettingRow title="Local storage" stacked>
         <div className="download-storage"><div className="download-storage-summary"><span>{formatBytes(total)} used by downloads</span><span>{storage?.capacity ? `${formatBytes(storage.free)} available` : ''}</span></div>
-          <div className="download-storage-bar" role="img" aria-label={`Downloads use ${formatBytes(total)}. Video ${formatBytes(storage?.video || 0)}, artwork ${formatBytes(storage?.artwork || 0)}, subtitles ${formatBytes(storage?.subtitles || 0)}.`}>{(['video', 'artwork', 'subtitles'] as const).map(category => <span key={category} className={`storage-${category}`} style={{ width: `${total ? (storage?.[category] || 0) / total * 100 : 0}%` }} />)}</div>
-          <div className="download-storage-legend">{(['video', 'artwork', 'subtitles'] as const).map(category => <span key={category}><i className={`storage-${category}`} />{category === 'video' ? 'Video' : category === 'artwork' ? 'Artwork' : 'Subtitles'} <span>{formatBytes(storage?.[category] || 0)}</span></span>)}</div>
+          <div className="download-storage-bar" role="img" aria-label={`Downloads use ${formatBytes(total)}. ${segments.map(segment => `${segment.label} ${formatBytes(segment.bytes)}`).join(', ')}.`}>{segments.map(({ category, bytes }) => <span key={category} className={`storage-${category}`} style={{ width: `${capacity || total ? bytes / (capacity || total) * 100 : 0}%` }} />)}</div>
+          <div className="download-storage-legend">{segments.map(({ category, label, bytes }) => <span key={category}><i className={`storage-${category}`} />{label} <span>{formatBytes(bytes)}</span></span>)}</div>
         </div>
       </SettingRow>
       <SettingRow title="Download quality" description="downloads closest matching quality">{binding => <SettingsSelect {...binding} value={preferences.downloadQuality} onChange={event => update({ downloadQuality: Number(event.target.value) as DownloadQuality })}><option value={480}>480p</option><option value={720}>720p</option><option value={1080}>1080p</option></SettingsSelect>}</SettingRow>

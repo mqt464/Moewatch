@@ -1,7 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { SharedAccess } from './SharedAccess';
 import { DesktopUpdates } from './DesktopUpdates';
-import { ArrowLeft, Film, Info, UserRound } from 'lucide-react';
+import { ArrowLeft, CirclePlay, Info, Network, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAccount } from '../AccountContext';
@@ -15,7 +15,7 @@ import { DownloadSettings } from '../downloads/DownloadSettings';
 
 const pages = [
   { id: 'account', title: 'Account', icon: UserRound },
-  { id: 'playback', title: 'Playback', icon: Film },
+  { id: 'playback', title: 'Playback', icon: CirclePlay },
   { id: 'about', title: 'About', icon: Info },
 ];
 
@@ -70,7 +70,7 @@ function PlaybackSettings() {
 export function SettingsPage() {
   const { section = 'account' } = useParams();
   const { error } = usePreferences();
-  const visiblePages = isTauri() ? [...pages.slice(0, 2), { id: 'shared-access', title: 'Shared Access', icon: Info }, ...pages.slice(2)] : pages;
+  const visiblePages = isTauri() ? [...pages.slice(0, 2), { id: 'shared-access', title: 'Shared Access', icon: Network }, ...pages.slice(2)] : pages;
   const page = visiblePages.find(entry => entry.id === section);
 
   if (section === 'appearance' || section === 'storage') return <Navigate to="/settings" replace />;
