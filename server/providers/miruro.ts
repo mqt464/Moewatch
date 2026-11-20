@@ -2,10 +2,9 @@ import { gunzipSync } from 'node:zlib';
 import type { AnimeProvider } from './types';
 import type { ProviderEpisode, ProviderServer, ProviderTitle, ResolvedPlayback } from '../../shared/api';
 import { ApiError } from '../infrastructure/errors';
-import { absoluteUrl, idDecode, idEncode, matching, media, origin, providerBrowser, record, request } from './common';
+import { absoluteUrl, idDecode, idEncode, matching, media, origin, record, request } from './common';
 
 const base = origin(process.env.MOEWATCH_MIRURO_ORIGIN || 'https://www.miruro.tv', 'miruro');
-const browserReady = providerBrowser.available();
 const fail = () => new ApiError('UPSTREAM_ERROR', 'Invalid Miruro catalogue payload', 502, 'miruro');
 const validTitle = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value);
 const validNumber = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 10000;
@@ -49,8 +48,7 @@ function selections(data: Record<string, unknown>) {
   return rows(data.tracks).filter(t => ['sub', 'ssub', 'dub'].includes(String(t.track))).flatMap(t => rows(t.providers).flatMap(p => rows(p.servers).filter(s => rows(s.streams).some(v => ['hls','mp4','webm'].includes(String(v.format)) && absoluteUrl(v.url, base))).map(s => ({ track: String(t.track), provider: String(p.provider), server: String(s.server), p, s }))));
 }
 export const miruro: AnimeProvider = {
-  id: 'miruro', name: 'Miruro', configured: browserReady || Boolean(process.env.MOEWATCH_MIRURO_ORIGIN),
-  note: browserReady || process.env.MOEWATCH_MIRURO_ORIGIN ? undefined : 'Playback needs the provider browser included in desktop builds.',
+  id: 'miruro', name: 'Miruro', configured: true,
   async search(query, signal): Promise<ProviderTitle[]> {
     if (!query.trim() || query.length > 200) throw new ApiError('INVALID_REQUEST', 'Invalid search query', 400, 'miruro');
     const body = await catalog('', { q: query.trim(), limit: '15' }, signal);

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import { anipm } from './anipm';
-import { idEncode, providerBrowser } from './common';
+import { idEncode, providerHttp } from './common';
 
 const signal = () => new AbortController().signal;
 const future = () => Math.floor(Date.now()/1000)+3600;
 function pipeline(change: Record<string, unknown> = {}) {
-  const browser = mock.method(providerBrowser, 'available', () => false);
+  const http = mock.method(providerHttp, 'request', async () => new Response('blocked', { status: 403 }));
   const calls: URL[] = [];
   const fetch = mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
     const u = new URL(String(input)); calls.push(u);
@@ -21,7 +21,7 @@ function pipeline(change: Record<string, unknown> = {}) {
     } else throw Error('Unexpected fixture route');
     return Response.json(body);
   });
-  return { calls, restore: () => { fetch.mock.restore(); browser.mock.restore(); } };
+  return { calls, restore: () => { fetch.mock.restore(); http.mock.restore(); } };
 }
 async function server(audio = 'sub') {
   const [title] = await anipm.search('Frieren', signal());

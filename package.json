@@ -1,7 +1,7 @@
 {
   "name": "moewatch",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "scripts": {
     "start": "vite --host 0.0.0.0 --port 5173 --strictPort",
@@ -23,6 +23,7 @@
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.14.1",
     "hls.js": "^1.7.4",
+    "impit": "0.14.9",
     "lucide-react": "^0.468.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

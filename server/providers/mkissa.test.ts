@@ -64,7 +64,7 @@ test('MKissa keeps playback disabled and honors aborts and unsafe input', async 
   await assert.rejects(mkissa.servers(idEncode({ titleId, episode: '../1' }), signal), { code: 'INVALID_REQUEST' });
   const bootstrapError = {
     code: 'UPSTREAM_BLOCKED',
-    message: 'MKissa playback requires a browser-authorized crypto bootstrap.',
+    message: 'MKissa playback is blocked by a provider CAPTCHA; direct player resolution is pending.',
     provider: 'mkissa'
   };
   await assert.rejects(mkissa.servers(episode, signal), bootstrapError);

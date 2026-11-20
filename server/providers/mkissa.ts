@@ -11,7 +11,7 @@ const titleHash = 'c6c067496f962fba87c7aaf6c215a40a6d3933c69012bd15e4d8949e58f3c
 const titleIdPattern = /^[a-z0-9]{1,64}$/i;
 const episodePattern = /^(?:0|[1-9][0-9]{0,4})(?:\.[0-9]{1,5})?$/;
 const audioTypes = ['sub', 'dub'] as const;
-const playbackNote = 'MKissa playback requires a browser-authorized crypto bootstrap.';
+const playbackNote = 'MKissa playback is blocked by a provider CAPTCHA; direct player resolution is pending.';
 
 type EpisodeId = { titleId: string; episode: string };
 

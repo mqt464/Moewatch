@@ -15,7 +15,6 @@ import { AccountService } from './account';
 import { createSkipService } from './aniskip';
 import { createDiscordPresence, validateDiscordPlayback } from './discord';
 import { DownloadService } from './downloads';
-import { closeBrowser } from './infrastructure/browser';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -90,8 +89,6 @@ function validatePlayback(value: unknown): PlaybackRequest {
   if (request.fallback !== undefined && typeof request.fallback !== 'boolean') throw new ApiError('INVALID_REQUEST', 'Invalid fallback flag', 400);
   return { animeId, episode, provider, serverId: request.serverId as string | undefined, audio, fallback: request.fallback as boolean | undefined };
 }
-
-let browserUsers = 0;
 
 export function createApiHandler(options: AppOptions = {}) {
   let closed = false;
@@ -400,12 +397,10 @@ export function createApiHandler(options: AppOptions = {}) {
       send(response, failure.status, { error: { code: failure.code, message: failure.message, provider: failure.provider }, attempts: (error as { attempts?: PlaybackAttempt[] })?.attempts });
     }
   };
-  browserUsers++;
   return Object.assign(handler, { close: () => {
     if (closed) return;
     closed = true;
     discord.close(); media.close(); void downloads.close().catch(() => {});
-    if (--browserUsers === 0) void closeBrowser().catch(() => {});
   } });
 }
 

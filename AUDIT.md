@@ -1,5 +1,18 @@
 # Initial release audit
 
+## Version 0.1.7 hotfix audit
+
+Reviewed the direct HTTP transport, provider adapters, shared DNS validation, media reads, desktop packaging, regression tests and paused mKissa research.
+
+- Replaced Miruro and Settlar browser requests with in-process Impit HTTP requests and browser-compatible TLS and fetch headers.
+- Preserved certificate verification, public DNS validation and pinned connections through a private loopback CONNECT tunnel. Restricted hosts, redirects, forwarded headers, timeouts and response sizes.
+- Kept HEAD asset lengths and cancellation behavior under regression coverage. Removed the redundant browser-availability switch.
+- Removed Chromium from desktop resources and CI installation. Bumped npm, Tauri and Rust package versions to 0.1.7.
+- Retained the mKissa direct-bootstrap diagnostic and documented its CAPTCHA and player blockers. The provider remains disabled.
+
+Validation: 144 app/API tests and seven relay tests passed. Two opt-in browser tests were skipped. Production build, TypeScript unused-local/unused-parameter checks, compiled Bun sidecar and isolated sidecar smoke tests passed. Live sub/dub resolution, HLS master/variant delivery, range segments and four full downloads passed for Miruro and ani.pm. ani.pm subtitle samples returned data. An isolated compiled Windows sidecar served both providers without workspace dependencies or Chromium. Saved manifests used local references. Decoded video playback, interactive installation and an installed-client upgrade were not repeated. Native installer signing and updater artifacts are verified in the release workflow before publication.
+
+
 ## Version 0.1.6 audit
 
 Reviewed every pending tracked and new file covering featured selection, catalog metadata, playback, touch controls, storage display, PWA assets and tests. Excluded Mkissa code as requested.

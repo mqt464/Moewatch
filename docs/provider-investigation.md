@@ -1,5 +1,16 @@
 # Provider investigation
 
+## Direct HTTP follow-up, November 21, 2026
+
+Miruro and ani.pm no longer require Chromium. Impit 0.14.9 supplies a native in-process HTTP client with Chrome TLS behavior. Miruro also requires same-origin fetch metadata headers; TLS behavior alone still returned 403. Both current adapters resolved live Frieren episode 1 sub and dub and returned HLS playlists through the new transport. The Windows Bun-compiled sidecar also returned both providers through the playback endpoint. The transport retains certificate verification, public DNS validation and address pinning through a private CONNECT tunnel, host restrictions, cancellation and response budgets. Desktop packaging no longer stages a provider browser. Full Cowboy Bebop episode 1 downloads completed through the direct transport for both audio tracks: Miruro saved 136,634,499 sub bytes and 135,301,578 dub bytes; ani.pm saved 319,867,310 sub bytes and 101,119,983 dub bytes. Both ani.pm subtitle samples also returned bytes. All four saved entry manifests contained local references only. This run did not decode the saved video in a player.
+
+mKissa build 190 uses a public client mask, two HMAC-SHA-256 steps for bootstrap proof, and an AES-GCM request envelope. The accepted bootstrap returns partB, epoch and lane without browser execution. The eligible client mask differs from the Node-detected mask by XOR 32. Signed episode requests for Bleach and Solo Leveling still returned NEED_CAPTCHA; GET and POST were checked. This response does not prove whether the server validated the request signature before the CAPTCHA guard. The shipped client handles this condition through Turnstile or Google CAPTCHA. Player attestation remains a separate unresolved step. mKissa stays disabled, and no direct playback success is claimed. `scripts/probe-mkissa-direct.mjs` reproduces the accepted bootstrap and signed episode probe without retaining session keys or signed URLs.
+
+REA parsed the extracted crypto source as inert JavaScript, with partial semantic coverage. An isolated local VM and a separate Node crypto implementation cross-checked the public build constants, proof and envelope. Live HTTP established bootstrap acceptance and the remaining CAPTCHA response. The earlier full-bundle REA run reached its per-source deadline; the smaller crypto-only analysis completed.
+
+## Earlier browser investigation
+
+
 Checked November 19, 2026 in Sydney. Provider settings distinguish configuration from live health.
 
 Gotaku is enabled alongside AniKoto and Re:Anime. Its public application and player bundles supplied the catalogue, handshake, playlist and segment formats. Live Cowboy Bebop episode 1 checks passed for hard sub and dub through Moewatch. Both full downloads completed and both local copies played with `/media/` streaming requests blocked. The requested 480p preference selected the available 360p rendition. The saved sub copy was 86,448,411 bytes and the dub copy was 73,583,947 bytes. Soft-sub captions and alternate-CDN failover were not verified and are not advertised as supported.

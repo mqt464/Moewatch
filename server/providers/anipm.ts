@@ -1,12 +1,10 @@
 import type { AudioPreference, ProviderEpisode, ResolvedPlayback } from '../../shared/api';
 import { ApiError } from '../infrastructure/errors';
-import { idDecode, idEncode, json, matching, origin, providerBrowser, record } from './common';
+import { idDecode, idEncode, json, matching, origin, record } from './common';
 import type { AnimeProvider } from './types';
 
 const provider = 'anipm';
 const base = origin(process.env.MOEWATCH_ANIPM_ORIGIN || 'https://ani.pm', provider);
-const browserReady = providerBrowser.available();
-const note = browserReady ? undefined : 'Playback needs the provider browser included in desktop builds.';
 type TitleId = { source: 'settlar' | 'anilist'; id: number; routeId?: string };
 type EpisodeId = TitleId & { routeId: string; number: number; audio: AudioPreference[] };
 const fail = () => new ApiError('UPSTREAM_ERROR', 'Invalid Ani.pm response', 502, provider);
@@ -46,7 +44,7 @@ function interval(value: unknown) {
   return typeof v?.start === 'number' && typeof v.end === 'number' && Number.isFinite(v.start) && Number.isFinite(v.end) && v.start >= 0 && v.end > v.start ? { start: v.start, end: v.end } : undefined;
 }
 export const anipm: AnimeProvider = {
-  id: provider, name: 'Ani.pm', configured: browserReady || Boolean(process.env.MOEWATCH_ANIPM_ORIGIN), note,
+  id: provider, name: 'Ani.pm', configured: true,
   async search(query, signal) {
     if (!query.trim() || query.length > 200) throw new ApiError('INVALID_REQUEST', 'Invalid search query', 400, provider);
     const body = await api(`search?${new URLSearchParams({ q: query.trim() })}`, signal);

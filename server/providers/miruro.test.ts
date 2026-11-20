@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { gzipSync } from 'node:zlib';
 import { miruro, decodeMiruroCatalog, parseMiruroEpisodes } from './miruro';
-import { idEncode, providerBrowser } from './common';
+import { idEncode, providerHttp } from './common';
 const anime='NtG-RmIvubqYRTFExTD0_vejcY8Bplcn';
 function encode(data: unknown) { const b=gzipSync(JSON.stringify(data)),k=Buffer.from('miruro/catalog');for(let i=0;i<b.length;i++)b[i]^=k[i%k.length];return b; }
 test('current catalogue codec and episode metadata do not invent audio availability',()=>{
@@ -12,16 +12,15 @@ test('current catalogue codec and episode metadata do not invent audio availabil
  assert.throws(()=>decodeMiruroCatalog(Buffer.from('bad')),{code:'UPSTREAM_ERROR'});
 });
 
-test('a blocked catalogue retries through the bounded browser transport', async t => {
+test('a blocked catalogue retries through the bounded direct HTTP transport', async t => {
  let drained = false, cancelled = false;
  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
   start(controller) { controller.enqueue(new TextEncoder().encode('blocked')); },
   pull(controller) { drained = true; controller.close(); },
   cancel() { cancelled = true; }
  }), { status: 403 }));
- t.mock.method(providerBrowser, 'available', () => true);
  const calls: string[] = [];
- t.mock.method(providerBrowser, 'request', async (...[input, options]: Parameters<typeof providerBrowser.request>) => {
+ t.mock.method(providerHttp, 'request', async (...[input, options]: Parameters<typeof providerHttp.request>) => {
   calls.push(String(input));
   assert.equal(options.maxBytes, 8 * 1024 * 1024);
   options.signal.throwIfAborted();

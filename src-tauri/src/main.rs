@@ -41,7 +41,6 @@ fn main() {
     .env("MOEWATCH_PORT", port.to_string())
     .env("MOEWATCH_DATA_DIR", data.to_string_lossy().to_string())
     .env("MOEWATCH_SESSION_FILE", data.join("sessions.json").to_string_lossy().to_string())
-    .env("MOEWATCH_BROWSER_EXECUTABLE", resource_root.join("provider-browser").join("chrome.exe").to_string_lossy().to_string())
     .env("MOEWATCH_STATIC_DIR", resources.to_string_lossy().to_string()).spawn()?;
    let server = Server(Arc::new(Mutex::new(Some(child))));
    // Updater exits bypass RunEvent::Exit but clear the resource table first.
