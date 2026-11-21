@@ -2,6 +2,7 @@ import type Hls from 'hls.js';
 import { usePreferences } from '../PreferencesContext';
 import { useEffect, useRef, type RefObject } from 'react';
 import type { PlaybackSource } from '../../shared/api';
+import { notifyPartyControl } from './partyPlayback';
 
 export function canResume(time: number, previousDuration: number, duration: number): boolean {
   return Number.isFinite(duration) && duration > 0 && time > 0 && time < duration * 0.95 && Math.abs(previousDuration - duration) <= Math.max(2, duration * 0.02);
@@ -10,10 +11,10 @@ export function canResume(time: number, previousDuration: number, duration: numb
 export function togglePlayback(videoRef: RefObject<HTMLVideoElement | null>, onError: (message: string) => void) {
   const video = videoRef.current;
   if (!video) return;
-  if (video.paused) void video.play().catch(failure => {
+  if (video.paused) void video.play().then(() => notifyPartyControl(video, 'play')).catch(failure => {
     if (videoRef.current === video && failure?.name !== 'AbortError') onError('Playback could not start. Try another server.');
   });
-  else video.pause();
+  else { video.pause(); notifyPartyControl(video, 'pause'); }
 }
 
 export function Player({ source, videoRef, label, onSave, onReady, onBuffering, onFirstFrame, onError, onClick }: {

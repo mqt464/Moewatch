@@ -4,5 +4,5 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   use: { baseURL: 'http://127.0.0.1:5173', viewport: { width: 1440, height: 1000 } },
-  webServer: { command: 'npm start', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI },
+  webServer: { command: 'npm start', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI, env: { MOEWATCH_DISABLE_DISCORD: '1' } },
 });

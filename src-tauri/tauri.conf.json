@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Moewatch",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "identifier": "com.moewatch.desktop",
   "build": {
     "beforeBuildCommand": "npm run desktop:prepare",
@@ -23,7 +23,8 @@
       "binaries/moewatch-server"
     ],
     "resources": {
-      "../dist/": "dist/"
+      "../dist/": "dist/",
+      "../native/discord-party/build/out/": "discord/"
     },
     "icon": [
       "icons/32x32.png",

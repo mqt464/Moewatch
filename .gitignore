@@ -18,6 +18,9 @@ ProductDesign.md
 VALIDATION.md
 
 src-tauri/target/
+src-tauri/gen/
 src-tauri/binaries/
 src-tauri/provider-browser/
 *.key
+vendor/
+native/discord-party/build/

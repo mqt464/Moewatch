@@ -1,0 +1,9 @@
+﻿{
+    "version":  "1.11.24259",
+    "files":  {
+                  "include/discordpp.h":  "ae07d992c03a73dc3d45a02eb9a7c58e511688a73f010049cd1ce1c6e1ee4691",
+                  "include/cdiscord.h":  "70b26b89ce0d7708e63ed05f9900de0f1e419fcae940884c1e01c34d0ac076a2",
+                  "lib/release/discord_partner_sdk.lib":  "6c0c2e2f1fc568a39378b5c7e4f43dfb512c286644f794686a8c8a3e38bd5cc2",
+                  "bin/release/discord_partner_sdk.dll":  "0688b44b738148cb0df9beca00a64f2b8b351f87a7af39035bc378008df34f0d"
+              }
+}

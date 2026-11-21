@@ -41,7 +41,10 @@ fn main() {
     .env("MOEWATCH_PORT", port.to_string())
     .env("MOEWATCH_DATA_DIR", data.to_string_lossy().to_string())
     .env("MOEWATCH_SESSION_FILE", data.join("sessions.json").to_string_lossy().to_string())
-    .env("MOEWATCH_STATIC_DIR", resources.to_string_lossy().to_string()).spawn()?;
+    .env("MOEWATCH_STATIC_DIR", resources.to_string_lossy().to_string())
+    .env("MOEWATCH_DISCORD_BRIDGE", resource_root.join("discord/moewatch-discord.exe").to_string_lossy().to_string())
+    .env("MOEWATCH_DISCORD_LAUNCH_COMMAND", format!("\"{}\"", std::env::current_exe()?.to_string_lossy()))
+    .env("MOEWATCH_WINDOW_PID", std::process::id().to_string()).spawn()?;
    let server = Server(Arc::new(Mutex::new(Some(child))));
    // Updater exits bypass RunEvent::Exit but clear the resource table first.
    app.resources_table().add(server.clone());

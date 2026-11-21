@@ -1,9 +1,10 @@
 {
   "name": "moewatch",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "scripts": {
+    "discord:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-discord.ps1",
     "start": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "tsc -b && vite build",

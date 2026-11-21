@@ -52,6 +52,17 @@
 .cinema-toolbar,.transport,.view-controls,.volume-control { display: flex; align-items: center; }
 .cinema-toolbar { justify-content: space-between; gap: 16px; padding-top: 6px; }
 .transport,.view-controls { gap: 10px; }
+.watchparty { display: flex; flex-shrink: 0; align-items: center; gap: 0; }
+.party-avatars { display: flex; align-items: center; padding-left: 8px; }
+.party-avatar { position: relative; display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; margin-left: -8px; overflow: hidden; border: 0; border-radius: 50%; background: #454047; color: #f5f3f2; font-size: 12px; font-weight: 600; }
+/* Remove the next avatar's silhouette plus a clear gap, rather than painting a ring. */
+.party-avatar:not(:last-child) { -webkit-mask-image: radial-gradient(circle 17px at calc(100% + 7px) 50%, transparent 98%, #000 100%); mask-image: radial-gradient(circle 17px at calc(100% + 7px) 50%, transparent 98%, #000 100%); }
+.party-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.party-overflow { background: #555258; font-variant-numeric: tabular-nums; }
+.party-leave { display: grid; place-items: center; width: 44px; height: 44px; margin-left: -8px; padding: 0; border: 0; background: transparent; color: #d4cfd4; cursor: pointer; }
+.party-leave:hover { background: transparent; color: #f16c78; }
+.party-leave:focus-visible { outline: 2px solid #e7a0b4; outline-offset: -4px; border-radius: 4px; }
+.player-status-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; }
 .player-time { display: block; min-height: 44px; padding: 0; border: 0; background: transparent; color: #f5f3f2; font: inherit; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
 .player-time span { color: #aaa5a9; }
 .volume-control input { appearance: none; width: 160px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; }
@@ -128,9 +139,9 @@
 .next-countdown > span { padding: 10px 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .subtitle-overlay { position: absolute; bottom: 165px; left: 12%; right: 12%; z-index: 2; text-align: center; pointer-events: none; display: grid; justify-items: center; gap: 3px; }
 .subtitle-overlay span { white-space: pre-line; font-size: clamp(18px,2.1vw,32px); font-weight: 500; line-height: 1.4; color: white; text-shadow: 0 2px 3px #000, 1px 0 2px #000, -1px 0 2px #000; background: #0008; padding: 2px 9px; border-radius: 3px; }
-.skip-segment { position: absolute; z-index: 6; bottom: 170px; right: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; color: #171317; background: white; border: 0; border-radius: 7px; font-size: 14px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.skip-segment { position: static; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; color: #171317; background: white; border: 0; border-radius: 7px; font-size: 14px; font-weight: 600; line-height: 20px; white-space: nowrap; }
 .skip-segment > svg { display: block; flex-shrink: 0; }
-.next-countdown { position: absolute; z-index: 6; bottom: 170px; right: 40px; background: white; color: #171317; border: 0; border-radius: 7px; padding: 0; display: flex; align-items: center; font-size: 14px; font-weight: 600; line-height: 20px; }
+.next-countdown { background: white; color: #171317; border: 0; border-radius: 7px; padding: 0; display: flex; align-items: center; font-size: 14px; font-weight: 600; line-height: 20px; }
 .watch-content > .data-note { position: absolute; z-index: 4; top: 110px; left: 40px; right: 40px; }
 .watch-content .source-mascot { display: block; width: 180px; height: auto; max-width: 100%; margin: 0 auto 18px; }
 .watch-content .player-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px 124px; background: #000; }
@@ -150,7 +161,7 @@
  .transport > .cinema-icon:first-child { order: 2; }
  
  
- .view-controls { display: flex; width: 100%; justify-content: space-between; padding-top: 6px; border-top: 1px solid #ffffff12; }
+ .view-controls { display: flex; width: 100%; gap: 4px; justify-content: space-between; padding-top: 6px; border-top: 1px solid #ffffff12; }
  .view-controls .cinema-icon svg { width: 23px; height: 23px; }
  .view-controls .cinema-icon:has(.control-caption) { position: relative; }
  .control-caption { display: block; position: absolute; top: 39px; font-size: 13px; line-height: 1.2; color: #ded9de; white-space: nowrap; }
@@ -174,8 +185,7 @@
  .cinema-panel .data-note { margin-top: 10px; }
  .cinema-panel > .data-note:last-child { display: none; }
  .subtitle-overlay { bottom: 240px; left: 5%; right: 5%; }
- .skip-segment { bottom: 230px; right: 16px; }
- .next-countdown { left:16px;right:16px;bottom:230px;flex-wrap:wrap; }
+ .next-countdown { flex-wrap:wrap; }
 }
 @media(max-width:374px) { .cinema-bottom { padding-left: 8px; padding-right: 8px; } .cinema-toolbar .cinema-icon { width: 40px; } }
 @media(max-height:500px) and (min-width:601px) { .cinema-header { padding-top: 8px; } .cinema-bottom { padding-bottom: 8px; } .cinema-panel { bottom:100px;max-height:calc(100dvh - 110px); } }
@@ -200,3 +210,29 @@ html[data-reduce-motion="true"] .player-backdrop { transition: none; }
 .timeline input { touch-action: none; }
 .watch-content :is(button, input) { user-select: none; -webkit-user-select: none; }
 .cinema-panel { overscroll-behavior: contain; }
+/* Keep the custom player landscape even when the browser cannot lock device orientation. */
+@media (pointer:coarse) and (orientation:portrait) and (max-width:600px) {
+ .watch-content { inset: auto; top: 50%; left: 50%; width: 100dvh; height: 100dvw; transform: translate(-50%,-50%) rotate(90deg); }
+}
+@media (pointer:coarse) and (max-width:600px), (pointer:coarse) and (max-height:600px) {
+ .watch-content { container-type: size; }
+ .cinema-header { padding: max(8px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left)); gap: 12px; }
+ .cinema-header h1 { font-size: 18px; }
+ .cinema-header p { margin-top: 3px; font-size: 12px; }
+ .cinema-bottom { padding: 50px max(16px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+ .cinema-toolbar { flex-wrap: nowrap; gap: 12px; }
+ .transport { width: auto; justify-content: flex-start; gap: 8px; }
+ .transport > .cinema-icon:first-child { order: initial; margin-right: 0; }
+ .view-controls { width: auto; padding-top: 0; border-top: 0; gap: 8px; }
+ .cinema-icon { width: 44px; height: 44px; }
+ .cinema-icon svg { width: 25px; height: 25px; }
+ .control-caption { display: none; }
+ .volume-control { display: flex; }
+ .volume-control input { display: block; width: 110px; }
+ .player-time { font-size: 14px; }
+ .next-countdown { flex-wrap: nowrap; }
+ .subtitle-overlay { bottom: 140px; }
+ .cinema-panel { left: auto; right: 16px; bottom: 100px; width: min(440px,calc(100cqw - 32px)); max-height: calc(100cqh - 110px); border-radius: 18px; }
+ .next-preview { left: auto; right: 0; width: min(320px,calc(100cqw - 32px)); transform-origin: bottom right; }
+}
+@container (max-width:700px) { .volume-slider { display: none; } }

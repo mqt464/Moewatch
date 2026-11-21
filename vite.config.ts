@@ -1,10 +1,12 @@
 import { defineConfig, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'node:path';
+import { createNativeDiscordParty } from './server/discord-party';
 
 export default defineConfig(async () => {
   const { createApiHandler } = await import('./server/app');
   const mount = (server: ViteDevServer | PreviewServer) => {
-    const handler = createApiHandler();
+    const handler = createApiHandler({ discordParty: createNativeDiscordParty({ binary: resolve('native/discord-party/build/out/moewatch-discord.exe') }) });
     server.httpServer?.once('close', () => handler.close());
     server.middlewares.use((request, response, next) => {
       const path = request.url?.split('?')[0] ?? '';
@@ -12,7 +14,7 @@ export default defineConfig(async () => {
       else next();
     });
   };
-  return { envDir: false as const, server: { watch: { ignored: ['**/artifacts/**', '**/test-results/**', '**/src-tauri/**', '**/*.bun-build'] } }, plugins: [react(), {
+  return { envDir: false as const, server: { watch: { ignored: ['**/vendor/**', '**/native/**', '**/artifacts/**', '**/test-results/**', '**/src-tauri/**', '**/*.bun-build'] } }, plugins: [react(), {
     name: 'moewatch-pwa',
     generateBundle(_options, bundle) {
       const assets = Object.keys(bundle).filter(path => /\.(js|css)$/.test(path)).map(path => '/' + path);

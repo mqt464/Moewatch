@@ -2,10 +2,34 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { curated } from '../src/catalog';
 import { readFileSync } from 'node:fs';
+import { emptyParty, type PartyStatus } from '../shared/watchparty';
 const media=readFileSync('tests/fixtures/player-flower.mp4');
-async function fixture(page:Page, options: { dub?: boolean; subtitles?: boolean; providerSkips?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; skipUnavailable?: boolean } = {}) {
- await page.route('**/api/v1/**',route=>{
+async function fixture(page:Page, options: { dub?: boolean; subtitles?: boolean; providerSkips?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; skipUnavailable?: boolean; party?: boolean } = {}) {
+ let party: PartyStatus = { ...emptyParty, enabled: true, room: 'fixture-room', self: '10', members: ['Mina', 'Alex', 'Sam', 'Rin', 'Yuki', 'Kai'].map((name,index) => ({ id: String(index + 10), name, avatar: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" fill="${['#4aaf74','#e4b37c','#8b83c9','#d58e9d','#7da6bf','#c59cba'][index]}"/><circle cx="15" cy="11" r="5" fill="#fff"/><path d="M5 30v-3a10 10 0 0 1 20 0v3" fill="#fff"/></svg>`) })) };
+ if (options.party) await page.addInitScript(() => {
+   Object.defineProperty(window, 'EventSource', { value: class {
+     onmessage: ((event: MessageEvent) => void) | null = null;
+     onerror: (() => void) | null = null;
+     private receive = (event: Event) => {
+       const value = (event as CustomEvent).detail;
+       document.documentElement.dataset.fixturePartyClock = String(value.playback?.clock || 0);
+       this.onmessage?.({ data: JSON.stringify(value) } as MessageEvent);
+     };
+     private fail = () => this.onerror?.();
+     constructor() { window.addEventListener('fixture-party-state', this.receive); window.addEventListener('fixture-party-error', this.fail); }
+     close() { window.removeEventListener('fixture-party-state', this.receive); window.removeEventListener('fixture-party-error', this.fail); }
+   } });
+ });
+ await page.route('**/api/v1/**',async route=>{
  const path=new URL(route.request().url()).pathname;
+ if(path.endsWith('/discord/party')) return route.fulfill({json:options.party?party:emptyParty});
+ if(options.party && path.includes('/discord/party/')) {
+   if(path.endsWith('/leave')) party = { ...emptyParty, enabled: true };
+   if(path.endsWith('/action')) party = { ...party, playback: { ...route.request().postDataJSON(), clock: (party.playback?.clock || 0) + 1, sender: party.self } };
+   await route.fulfill({json:{ok:true}});
+   if(!path.endsWith('/playback')) await page.evaluate(value => window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: value })), party).catch(() => {});
+   return;
+ }
  if(path.endsWith('/account')) return route.fulfill({json:{user:null,configured:false}});
  if(path.endsWith('/availability'))return route.fulfill({json:{animeId:154587,providers:[{provider:'anikoto',status:'available',episodes:[1,3].map(number=>({id:String(number),number,kind:'regular',audio:options.dub===false?['sub']:['sub','dub']}))}]}});
  if(path.endsWith('/servers'))return route.fulfill({json:{servers:[{id:'main',name:'Main',audio:'sub'},{id:'backup',name:'Backup',audio:'sub'}]}});
@@ -565,4 +589,120 @@ test.describe('landscape touch controls', () => {
   expect(Math.abs(await video.evaluate(v => v.currentTime) - before)).toBeLessThan(1);
   await expect(page.locator('.scrub-preview')).toHaveCount(0);
  });
+});
+
+test('watchparty shows four avatars and overflow, retains audio, and leaves with a bare icon', async ({ page }) => {
+  await fixture(page, { party: true });
+  await expect(page.locator('.party-avatar:not(.party-overflow)')).toHaveCount(4);
+  await expect(page.locator('.party-overflow')).toHaveText('+2');
+  await expect(page.locator('.party-avatar').first()).toHaveCSS('border-width', '0px');
+  expect(await page.locator('.party-avatar').first().evaluate(node => getComputedStyle(node).maskImage)).toContain('radial-gradient');
+  expect(await page.locator('.view-controls').evaluate(node => node.firstElementChild?.classList.contains('watchparty'))).toBe(true);
+  const leave = page.getByRole('button', { name: 'Leave watchparty' });
+  await expect(leave).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await leave.hover();
+  await expect(leave).toHaveCSS('color', 'rgb(241, 108, 120)');
+  await expect(leave).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await page.getByRole('button', { name: 'Subtitles', exact: true }).click();
+  const resolution = page.waitForRequest(request => request.url().endsWith('/api/v1/playback') && request.postDataJSON().audio === 'dub');
+  await page.getByRole('button', { name: 'Dub', exact: true }).click();
+  await resolution;
+  await expect(page.getByRole('button', { name: 'Dub', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.cinema-header h1').click();
+  await expect(page.locator('.cinema-panel')).toHaveCount(0);
+  await page.screenshot({ path: 'artifacts/watchparty/desktop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(leave).toBeVisible();
+  expect(await page.locator('.watchparty').evaluate(node => node.getBoundingClientRect().right <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'artifacts/watchparty/mobile.png' });
+  await leave.click();
+  await expect(page.locator('.watchparty')).toHaveCount(0);
+  await expect(page.locator('.player-shell video')).toHaveCount(1);
+});
+
+test.describe('watchparty landscape mobile', () => {
+ test.use({ hasTouch: true, isMobile: true, viewport: { width: 844, height: 390 } });
+ test('party controls fit beside Next and skip controls align with the timestamp', async ({ page }) => {
+  await fixture(page, { party: true });
+  await expect(page.locator('.player-backdrop')).toHaveCSS('opacity', '0');
+  const party = await page.locator('.watchparty').boundingBox();
+  const next = await page.getByRole('button', { name: 'Next episode', exact: true }).boundingBox();
+  const time = await page.locator('.player-time').boundingBox();
+  const skip = await page.getByRole('button', { name: 'Skip opening', exact: true }).boundingBox();
+  expect(party!.x + party!.width).toBeLessThanOrEqual(next!.x);
+  expect(Math.abs(time!.y + time!.height / 2 - skip!.y - skip!.height / 2)).toBeLessThan(1);
+  expect(await page.locator('.view-controls').evaluate(node => node.getBoundingClientRect().right <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'artifacts/watchparty/landscape-mobile.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.locator('.watch-content').evaluate(node => ({ width: Math.round(node.clientWidth), height: Math.round(node.clientHeight) }))).toEqual({ width: 844, height: 390 });
+  const root = await page.locator('.watch-content').boundingBox();
+  expect(Math.round(root!.width)).toBe(390);
+  expect(Math.round(root!.height)).toBe(844);
+  await page.screenshot({ path: 'artifacts/watchparty/portrait-landscape-fallback.png' });
+  await page.getByRole('button', { name: 'Leave watchparty' }).tap();
+  await expect(page.locator('.watchparty')).toHaveCount(0);
+ });
+});
+
+test('remote controls correct drift without feedback, retain preferences, and reuse the mascot for errors', async ({ page }) => {
+  const commands: unknown[] = [];
+  page.on('request', request => { if (request.url().endsWith('/discord/party/action')) commands.push(request.postDataJSON()); });
+  await fixture(page, { party: true });
+  const video = page.locator('.player-shell video');
+  await page.getByRole('slider', { name: 'Volume', exact: true }).fill('0.35');
+  const remote = async (clock: number, time: number, error = '') => page.evaluate(({ clock, time, error }) => {
+    window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: {
+      enabled: true, room: 'fixture-room', self: '10', members: [{ id: '10', name: 'Mina', avatar: '' }, { id: '20', name: 'Alex', avatar: '' }], error,
+      playback: { animeId: 154587, episode: 1, time, paused: true, rate: 1, at: Date.now(), clock, sender: '20', action: 'pause' },
+    } }));
+  }, { clock, time, error });
+  await remote(1, 3);
+  await expect.poll(() => video.evaluate(v => v.currentTime)).toBeCloseTo(3, 1);
+  await expect(video).toHaveJSProperty('volume', 0.35);
+  expect(commands).toHaveLength(0);
+  await remote(2, 3.5);
+  await expect(video).toHaveJSProperty('paused', true);
+  expect(await video.evaluate(v => v.currentTime)).toBeCloseTo(3, 1);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(() => commands.length).toBe(1);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(() => commands.length).toBe(2);
+  await expect(page.locator('html')).toHaveAttribute('data-fixture-party-clock', '2');
+  await remote(5, 3, 'Watchparty sync disconnected. Leave the party to continue watching on your own.');
+  await expect(page.locator('.player-empty .source-mascot')).toBeVisible();
+  await expect(page.locator('.player-empty')).toContainText('Watchparty sync disconnected');
+  await page.getByRole('button', { name: 'Leave watchparty' }).click();
+  await expect(page.locator('.player-empty')).toHaveCount(0);
+});
+
+test('an accepted Discord invite opens its episode from home without automatically leaving', async ({ page }) => {
+  let leaves = 0;
+  page.on('request', request => { if (request.url().endsWith('/discord/party/leave')) ++leaves; });
+  await fixture(page, { party: true });
+  await page.goto('/');
+  await expect(page.locator('main')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: {
+    enabled: true, active: false, destination: { animeId: 154587, episode: 3 }, room: '', self: '10', members: [], playback: null, error: '',
+  } })));
+  await expect(page).toHaveURL(/\/watch\/154587\/3$/);
+  await expect(page.locator('.cinema-header p')).toHaveText('Episode 3');
+  expect(leaves).toBe(0);
+});
+
+test('local event stream recovery restores playback without sending another group command', async ({ page }) => {
+  const commands: unknown[] = [];
+  page.on('request', request => { if (request.url().endsWith('/discord/party/action')) commands.push(request.postDataJSON()); });
+  await fixture(page, { party: true });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-fixture-party-clock', '1');
+  await page.evaluate(() => window.dispatchEvent(new Event('fixture-party-error')));
+  await expect(page.locator('.player-empty')).toContainText('Watchparty sync disconnected');
+  await expect(page.locator('.player-shell video')).toHaveJSProperty('paused', true);
+  await page.evaluate(async () => {
+    const status = await (await fetch('/api/v1/discord/party')).json();
+    window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: status }));
+  });
+  await expect(page.locator('.player-shell video')).toHaveJSProperty('paused', false);
+  await expect(page.locator('.player-empty')).toHaveCount(0);
+  expect(commands).toHaveLength(1);
 });

@@ -21,6 +21,7 @@ import { ListStatus } from './ListStatus';
 import { SettingsPage } from './settings/SettingsPage';
 import { ScrollArea, ScrollFades } from './ScrollArea';
 import { WatchPlayer } from './playback/WatchPlayer';
+import { WatchpartyProvider } from './playback/Watchparty';
 import { availableEpisodes, useAvailability } from './playback/availability';
 import { DownloadsProvider, useDownloads } from './downloads/DownloadsContext';
 import { DownloadButton, DownloadsPopover } from './downloads/Downloads';
@@ -362,7 +363,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { failed: b
 }
 
 document.documentElement.classList.toggle('no-view-transitions', typeof document.startViewTransition !== 'function');
-const router = createBrowserRouter([{ element: <App />, children: [
+const router = createBrowserRouter([{ element: <WatchpartyProvider><App /></WatchpartyProvider>, children: [
   { path: '/', element: <Home /> },
   { path: '/browse', element: <Browse /> },
   { path: '/list', element: <MyList /> },

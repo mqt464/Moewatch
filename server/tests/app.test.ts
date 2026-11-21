@@ -42,6 +42,18 @@ test('Discord presence validates requests and does not claim a paused player', a
   assert.equal((await post({ session: 'test-viewer', clear: true })).status, 200);
 });
 
+test('watchparty routes stay disabled without the native SDK and reject invalid controls', async () => {
+  const state = await (await fetch(`${root}/api/v1/discord/party`)).json();
+  assert.equal(state.enabled, false);
+  assert.deepEqual(state.members, []);
+  const post = (path: string, body: unknown) => fetch(`${root}/api/v1/discord/party/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal((await post('action', {})).status, 400);
+  assert.equal((await post('playback', { animeId: -1 })).status, 400);
+  assert.equal((await post('leave', {})).status, 200);
+});
+
 test('catalog and anime response contract', async () => {
   const catalogResult = await (await fetch(`${root}/api/v1/catalog?genre=Action`)).json();
   assert.deepEqual(catalogResult, { anime: [anime] });

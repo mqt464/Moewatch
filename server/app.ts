@@ -13,12 +13,14 @@ import { providers as defaultProviders } from './providers/registry';
 import { cacheProvider } from './infrastructure/provider-cache';
 import { AccountService } from './account';
 import { createSkipService } from './aniskip';
-import { createDiscordPresence, validateDiscordPlayback } from './discord';
+import { createDiscordPresence, discordActivity, validateDiscordPlayback } from './discord';
+import { createWatchparty, type DiscordPartyTransport } from './watchparty';
+import { createNativeDiscordParty } from './discord-party';
 import { DownloadService } from './downloads';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-export type AppOptions = { providers?: AnimeProvider[]; catalog?: Catalog; episodeMetadata?: ReturnType<typeof createEpisodeMetadata>; downloadStateFile?: string; downloadLocation?: string };
+export type AppOptions = { providers?: AnimeProvider[]; catalog?: Catalog; episodeMetadata?: ReturnType<typeof createEpisodeMetadata>; downloadStateFile?: string; downloadLocation?: string; discordParty?: DiscordPartyTransport | false };
 
 const identity = (anime: Anime): AnimeIdentity => ({ id: anime.id, title: anime.title, romaji: anime.romaji, year: anime.year, format: anime.format, episodes: anime.episodes });
 const positive = (value: string): number => {
@@ -103,6 +105,10 @@ export function createApiHandler(options: AppOptions = {}) {
   const account = new AccountService();
   const skipTimes = createSkipService();
   const discord = createDiscordPresence();
+  const discordParty = options.discordParty === false ? undefined : options.discordParty ?? createNativeDiscordParty();
+  const party = createWatchparty(discordParty);
+  let presenceOwner = '';
+  let presenceExpiry: ReturnType<typeof setTimeout> | undefined;
   const downloads = new DownloadService({
     stateFile: options.downloadStateFile, defaultLocation: options.downloadLocation,
     read: media.read, resolve: playback,
@@ -243,6 +249,20 @@ export function createApiHandler(options: AppOptions = {}) {
       }
       if (!path.startsWith('/api/v1/')) throw new ApiError('NOT_FOUND', 'Route not found', 404);
       const route = path.slice(8);
+      if (route === 'discord/party' || route.startsWith('discord/party/')) {
+        const address = request.socket.remoteAddress;
+        if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address || '')) throw new ApiError('INVALID_REQUEST', 'Watchparties are available on this device only', 403);
+        if (method === 'GET' && route === 'discord/party') return send(response, 200, party.status());
+        if (method === 'GET' && route === 'discord/party/events') { party.stream(response); return; }
+        if (method === 'POST') {
+          if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);
+          const body = await readJson(request);
+          if (route === 'discord/party/playback') { await party.advertise(body); return send(response, 200, { ok: true }); }
+          if (route === 'discord/party/action') { party.action(body); return send(response, 200, { ok: true }); }
+          if (route === 'discord/party/leave') { await party.leave(); return send(response, 200, { ok: true }); }
+        }
+        throw new ApiError('NOT_FOUND', 'Route not found', 404);
+      }
       const localFile = /^downloads\/([a-f0-9-]{36})\/files\/(.+)$/.exec(route);
       if ((method === 'GET' || method === 'HEAD') && localFile) {
         await downloads.serve(localFile[1], localFile[2], method, request.headers.range, response, controller.signal);
@@ -289,6 +309,10 @@ export function createApiHandler(options: AppOptions = {}) {
         if (body && typeof body === 'object' && 'clear' in body && body.clear === true) {
           if (!('session' in body) || typeof body.session !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(body.session)) throw new ApiError('INVALID_REQUEST', 'Invalid Discord session', 400);
           discord.clear(body.session);
+          if (discordParty?.presence && presenceOwner === body.session) {
+            presenceOwner = ''; clearTimeout(presenceExpiry);
+            await discordParty.presence(null).catch(() => {});
+          }
           return send(response, 200, { ok: true });
         }
         const update = validateDiscordPlayback(body);
@@ -297,6 +321,15 @@ export function createApiHandler(options: AppOptions = {}) {
         if (anime && !anime.cover.startsWith('https://')) anime = await animeById(update.animeId, controller.signal);
         if (!anime || anime.episodes && update.episode > anime.episodes) throw new ApiError('NOT_FOUND', 'Episode not found', 404);
         const { user } = await account.status(request);
+        if (discordParty?.presence) {
+          if (presenceOwner && presenceOwner !== update.session) return send(response, 200, { accepted: false });
+          presenceOwner = update.session;
+          clearTimeout(presenceExpiry);
+          presenceExpiry = setTimeout(() => { presenceOwner = ''; void discordParty.presence!(null).catch(() => {}); }, 60000);
+          presenceExpiry.unref();
+          await discordParty.presence(discordActivity(update, anime, Date.now(), user));
+          return send(response, 200, { accepted: true });
+        }
         return send(response, 200, { accepted: discord.update(update, anime, user) });
       }
       if (route.startsWith('account')) {
@@ -401,7 +434,7 @@ export function createApiHandler(options: AppOptions = {}) {
   return Object.assign(handler, { close: () => {
     if (closed) return;
     closed = true;
-    discord.close(); media.close(); void downloads.close().catch(() => {});
+    clearTimeout(presenceExpiry); party.close(); discord.close(); media.close(); void downloads.close().catch(() => {});
   } });
 }
 

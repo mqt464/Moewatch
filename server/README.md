@@ -22,6 +22,24 @@ Miruro and ani.pm are enabled by default. Protected requests use the in-process 
 
 This is a trusted-local-network service, not an authenticated public service. Host/origin checks reduce cross-site abuse and DNS rebinding; they do not replace authentication, TLS or deployment-level rate limits. Do not port-forward it. Only access media you are authorized to watch.
 
+## Watchparty integration status
+
+Windows builds include the native Discord Social SDK bridge and its runtime DLL. Opening an episode prepares a private lobby automatically. The host sends invitations through Discord's chat + menu; accepting one opens Moewatch at the invited episode and joins that lobby. Guests do not advertise a join secret. The bridge never accepts unsolicited join requests. Discord may still display its own Ask to Join control.
+
+The first watch opens Discord's authorization flow. Later sessions refresh credentials without another prompt. The Discord application must have Social SDK enabled, Public Client enabled, and the desktop redirect `http://127.0.0.1/callback` configured. These are application settings in the Developer Portal, not user setup. Refresh credentials stay in a Windows DPAPI encrypted file in Moewatch's data directory. Tokens and SDK diagnostics never reach the player or application logs. Existing presence artwork and episode timers use the native bridge when available.
+
+The SDK is stored in ignored `vendor/discord_social_sdk`. `npm run discord:build` verifies its pinned file hashes and builds the bridge with Visual Studio C++ tools. `npm run desktop:prepare` includes that build automatically. The installer carries `discord/moewatch-discord.exe`, `discord_partner_sdk.dll` and dependency notices. Users do not install an SDK. `npm start` uses the local bridge when built, without registering a desktop launch command unless `MOEWATCH_DISCORD_LAUNCH_COMMAND` is supplied. Set `MOEWATCH_DISABLE_DISCORD=1` to disable it for automated tests. Standalone API deployments use `MOEWATCH_DISCORD_BRIDGE` to locate the helper.
+
+The proprietary SDK is not committed to the source repository. Clean CI builds need the `DISCORD_SOCIAL_SDK_URL` secret pointing to a private HTTPS SDK ZIP with a top-level `discord_social_sdk` folder. The build checks paths before extraction and validates the SDK files against `native/discord-party/sdk-manifest.json`. A runner with the SDK already available at the vendor path does not need the secret.
+
+The service provides loopback-only `/api/v1/discord/party` status, `/events` server events, and POST `/playback`, `/action`, and `/leave` routes. `AppOptions.discordParty` can supply an alternate transport for tests; `false` disables native discovery. Playback advertisements only cache local state. They do not broadcast lobby messages. Actions carry episode, position, paused state, playback speed, timestamp and a logical clock. Audio, subtitles, sources, quality and volume stay on each client. No periodic synchronization messages are sent. One existing member sends a snapshot when a guest joins or reconnects. Solo playback sends no lobby messages. The lobby is created when watching begins, then reused across episode changes; creation is not deferred until invite acceptance.
+
+The UI shows four overlapping avatars, a grey overflow count, and a backgroundless leave icon that turns red on hover. Play/pause correct drift greater than 1.5 seconds. Seeks always align positions, and scrubber changes combine after 250 ms. Remote controls never generate outgoing controls. Errors reuse the existing mascot screen. Local file playback leaves the party because invitations cannot resolve another user's local file.
+
+The party stack sits directly before Next in the toolbar. Avatar overlap gaps use transparent masks, with no painted outlines. Skip prompts and the episode countdown share the timestamp row. Touch phones keep a landscape player layout; portrait viewports rotate the custom player as a fallback. Fullscreen also requests a landscape orientation lock when the browser supports it. Physical device orientation locking remains browser-dependent.
+
+Unit tests use a simulated SDK transport. Player tests simulate local server events. The native build self-test loads the real SDK and checks Windows credential encryption without connecting to Discord. These tests do not establish a live two-account watchparty. The application-wide Discord allowance cannot be guaranteed by per-device controls; failed sends stop synchronization instead of retrying stale commands.
+
 ## Endpoints
 
 All JSON routes start with `/api/v1`:

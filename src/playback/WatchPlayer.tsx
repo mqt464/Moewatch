@@ -13,6 +13,7 @@ import { canResume, Player, togglePlayback } from './Player';
 import './playback.css';
 import { useDiscordPresence } from './discord';
 import { useDownloads } from '../downloads/DownloadsContext';
+import { PartyAvatars, usePartyPlayer } from './Watchparty';
 
 const noTracks: SubtitleTrack[] = [];
 
@@ -45,6 +46,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const effectivePlayback = downloaded || playback;
   const source: PlaybackSource | undefined = localSource ? { url: localSource, type: 'mp4' } : effectivePlayback?.sources[0];
   useDiscordPresence(video, anime, episode, source?.url);
+  const party = usePartyPlayer(video, anime.id, episode, source?.url, Boolean(localSource));
   const localEpisodes = anime.episodes ? Array.from({ length: Math.min(anime.episodes, 100000) }, (_, index) => index + 1) : [episode];
   const navigation = localSource || !episodes.length ? localEpisodes : episodes;
   const nextEpisode = navigation.find(number => number > episode);
@@ -79,10 +81,12 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     onProgress({ anime, episode, time: player.currentTime, duration: player.duration, updated: Date.now() });
   }
 
-  function loaded() {
+  async function loaded() {
     setResumeNote('');
     const player = video.current;
     if (!player) return;
+    if (await party.ready()) return;
+    if (video.current !== player) return;
     if (progress?.episode === episode) {
       if (canResume(progress.time, progress.duration, player.duration)) player.currentTime = progress.time;
       else if (progress.time > 0 && progress.time < progress.duration * 0.95) setResumeNote('This source has a different runtime. Saved progress was not applied.');
@@ -105,7 +109,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   ])) as Record<AudioPreference, boolean>;
 
   const findingSource = !source && (downloadsLoading || availability.loading || loading || (playable && !effectivePlayback && !error && !availability.error));
-  const playerError = error || (!localSource && availability.error ? 'Sources could not be checked. Try another provider.' : '');
+  const playerError = error || party.error || (!localSource && availability.error ? 'Sources could not be checked. Try another provider.' : '');
   function reportError(message: string) { video.current?.pause(); setBuffering(false); setError(message); }
   return <div className="watch-content" aria-label="Episode player">
     <header className="cinema-header"><Link viewTransition={!preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
@@ -116,13 +120,13 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
       {((!source && findingSource) || (source && buffering && !error)) && <div className="player-loading" role="status" aria-label={source ? 'Loading video' : 'Finding video source'}><span className="buffer-spinner" /><span className="sr-only">{source ? 'Loading video' : 'Finding video source'}</span></div>}
       <input hidden type="file" accept="video/*,.mkv" aria-label="Choose a local video" onChange={event => {
         const file = event.target.files?.[0];
-        if (file) { video.current?.pause(); save(true); if (localUrl.current) URL.revokeObjectURL(localUrl.current); localUrl.current = URL.createObjectURL(file); setLocalSource(localUrl.current); setError(''); setBuffering(true); }
+        if (file) { if (party.status.room) party.leave(); party.advertise(null); video.current?.pause(); save(true); if (localUrl.current) URL.revokeObjectURL(localUrl.current); localUrl.current = URL.createObjectURL(file); setLocalSource(localUrl.current); setError(''); setBuffering(true); }
         event.target.value = '';
       }} />
     </div>
     {resumeNote && <p className="data-note" role="status">{resumeNote}</p>}
     
-    <CinemaControls intro={effectivePlayback?.intro} outro={effectivePlayback?.outro} onError={reportError} nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} sourceType={source?.type} tracks={localSource ? noTracks : effectivePlayback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
+    <CinemaControls partyControls={party.status.active || party.status.members.length > 1 ? <PartyAvatars members={party.status.members} onLeave={party.leave} /> : undefined} intro={effectivePlayback?.intro} outro={effectivePlayback?.outro} onError={reportError} nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} sourceType={source?.type} tracks={localSource ? noTracks : effectivePlayback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); party.next(nextEpisode); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
     <div className="source-controls" aria-label="Playback sources">
       <label>Provider<select disabled={Boolean(localSource || downloaded)} value={provider} onChange={event => chooseProvider(event.target.value as ProviderPreference)}><option value="auto">Automatic</option>{providerIds.map(id => { const available = availableEpisodes(availability.data, audio, id).includes(episode); return <option key={id} value={id} disabled={!available}>{providerNames[id]}{availability.loading ? ' (Checking...)' : !available ? ' (Unavailable)' : ''}</option>; })}</select></label>
       <label>Server<select disabled={!servers.length || Boolean(localSource)} value={serverId || playback?.server.id || ''} onChange={event => { save(true); setError(''); setPlayback(null); if (provider === 'auto' && selectedProvider) setProvider(selectedProvider); setServerId(event.target.value); }}><option value="">Automatic</option>{servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}</select></label>

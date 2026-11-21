@@ -23,7 +23,7 @@ export function useDiscordPresence(videoRef: RefObject<HTMLVideoElement | null>,
       const body: DiscordPlayback = { session, animeId: anime.id, episode, time: video.currentTime, duration: video.duration, paused: video.paused, rate: video.playbackRate };
       send(body);
     };
-    const events = ['playing', 'pause', 'seeked', 'ratechange', 'ended', 'error'];
+    const events = ['loadedmetadata', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'error'];
     events.forEach(event => video.addEventListener(event, update));
     window.addEventListener('pagehide', clear);
     const timer = window.setInterval(update, 15000);

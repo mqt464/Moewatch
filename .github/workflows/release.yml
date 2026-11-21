@@ -3,10 +3,16 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      prebuilt_tag:
+        description: 'Sign an audited installer already uploaded to this draft release. Leave blank to build from source.'
+        required: false
+        type: string
 permissions:
   contents: write
 jobs:
   windows:
+    if: ${{ inputs.prebuilt_tag == '' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +33,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          DISCORD_SOCIAL_SDK_URL: ${{ secrets.DISCORD_SOCIAL_SDK_URL }}
         with:
           tagName: v__VERSION__
           releaseName: Moewatch v__VERSION__
@@ -34,3 +41,47 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
+  sign-prebuilt:
+    if: ${{ inputs.prebuilt_tag != '' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.prebuilt_tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Download audited installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.prebuilt_tag }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
+          gh release download $env:RELEASE_TAG --pattern '*.exe' --dir artifacts/release
+          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+      - name: Sign and verify updater assets
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          RELEASE_TAG: ${{ inputs.prebuilt_tag }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -ne "v$version") { throw 'Release version mismatch' }
+          $installer = "artifacts/release/Moewatch_${version}_x64-setup.exe"
+          npx tauri signer sign --app-version $version $installer
+          if ($LASTEXITCODE -ne 0) { throw 'Updater signing failed' }
+          node scripts/release-manifest.mjs $env:RELEASE_TAG $installer
+          if ($LASTEXITCODE -ne 0) { throw 'Updater signature verification failed' }
+      - name: Upload verified updater assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.prebuilt_tag }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          gh release upload $env:RELEASE_TAG "artifacts/release/Moewatch_${version}_x64-setup.exe.sig" artifacts/release/latest.json --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Updater upload failed' }
