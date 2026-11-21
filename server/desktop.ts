@@ -5,7 +5,7 @@ import { resolve, extname, sep } from 'node:path';
 import { createApiHandler } from './app';
 const root = resolve(process.env.MOEWATCH_STATIC_DIR || 'dist');
 const api = createApiHandler();
-const types: Record<string,string> = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.png':'image/png', '.jpg':'image/jpeg', '.svg':'image/svg+xml', '.woff2':'font/woff2' };
+const types: Record<string,string> = { '.webmanifest':'application/manifest+json', '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.png':'image/png', '.jpg':'image/jpeg', '.svg':'image/svg+xml', '.woff2':'font/woff2' };
 const shared = createSharedAccess(async (req,res) => {
  const url = new URL(req.url || '/', 'http://localhost');
  if (url.pathname.startsWith('/api/v1/') || url.pathname.startsWith('/media/')) { await api(req,res); return; }

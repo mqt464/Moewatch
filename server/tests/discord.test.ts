@@ -13,11 +13,33 @@ test('presence uses CDN art and adjusts the timer for playback speed and pause',
   const activity = discordActivity({ ...playback, rate: 2 }, anime, 100000);
   assert.equal(activity.type, 3);
   assert.equal(activity.assets?.large_image, anime.cover);
+  assert.equal(activity.assets?.large_text, anime.title);
+  assert.equal(activity.timestamps?.start, 70);
   assert.equal(activity.timestamps?.end, 790);
   const paused = discordActivity({ ...playback, paused: true }, { ...anime, cover: '/local.jpg' });
   assert.equal(paused.timestamps, undefined);
   assert.equal(paused.assets, undefined);
   assert.equal(paused.state, 'Episode 5 · Paused');
+});
+
+test('presence shows the signed-in AniList avatar and tracks seeks and resumed playback', () => {
+  const user = { name: 'Viewer', avatar: 'https://cdn.example.org/avatar.jpg' };
+  const activity = discordActivity(playback, anime, 2_000_000, user);
+  assert.equal(activity.details, anime.title);
+  assert.equal(activity.state, 'Episode 5');
+  assert.equal(activity.assets?.small_image, user.avatar);
+  assert.equal(activity.assets?.small_text, user.name);
+  assert.deepEqual(activity.timestamps, { start: 1940, end: 3380 });
+  const seeked = discordActivity({ ...playback, time: 720 }, anime, 2_000_000, user);
+  assert.deepEqual(seeked.timestamps, { start: 1280, end: 2720 });
+  const resumed = discordActivity({ ...playback, time: 720 }, anime, 2_100_000, user);
+  assert.deepEqual(resumed.timestamps, { start: 1380, end: 2820 });
+  const paused = discordActivity({ ...playback, paused: true }, anime, 2_000_000, user);
+  assert.equal(paused.timestamps, undefined);
+  assert.equal(paused.assets?.small_image, user.avatar);
+  for (const profile of [undefined, null, { ...user, avatar: '' }, { ...user, avatar: 'http://example.org/avatar.jpg' }]) {
+    assert.equal(discordActivity(playback, anime, 2_000_000, profile).assets?.small_image, undefined);
+  }
 });
 
 test('presence rejects invalid playback payloads', () => {
@@ -68,10 +90,15 @@ test('IPC handshake, split frames, ownership, pause and clearing', async t => {
     }
   }
   assert.equal(presence.update({ ...playback, paused: true }, anime), false);
-  assert.equal(presence.update(playback, anime), true);
+  const user = { name: 'Viewer', avatar: 'https://cdn.example.org/avatar.jpg' };
+  assert.equal(presence.update(playback, anime, user), true);
   await until(() => messages.some(m => m.data.cmd === 'SET_ACTIVITY'));
   assert.deepEqual(messages[0].data, { v: 1, client_id: '1572285226464317492' });
   assert.equal(messages[1].data.args.activity.assets.large_image, anime.cover);
+  assert.equal(messages[1].data.args.activity.assets.small_image, user.avatar);
+  assert.equal(messages[1].data.args.activity.assets.small_text, user.name);
+  assert.equal(typeof messages[1].data.args.activity.timestamps.start, 'number');
+  assert.equal(typeof messages[1].data.args.activity.timestamps.end, 'number');
   assert.equal(presence.update({ ...playback, session: 'viewer-2' }, anime), false);
   presence.clear('viewer-2');
   assert.equal(presence.update({ ...playback, paused: true }, anime), true);

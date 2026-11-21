@@ -19,13 +19,22 @@ export function validateDiscordPlayback(value: unknown): DiscordPlayback {
   return p;
 }
 
-export function discordActivity(p: DiscordPlayback, anime: Pick<Anime, 'title' | 'cover'>, now = Date.now()) {
+type PresenceUser = { name: string; avatar: string };
+
+export function discordActivity(p: DiscordPlayback, anime: Pick<Anime, 'title' | 'cover'>, now = Date.now(), user?: PresenceUser | null) {
+  const assets = {
+    ...(anime.cover.startsWith('https://') ? { large_image: anime.cover, large_text: anime.title.slice(0, 128) } : {}),
+    ...(user?.avatar.startsWith('https://') ? { small_image: user.avatar, small_text: user.name.slice(0, 128) } : {}),
+  };
   return {
     type: 3,
     details: anime.title.slice(0, 128),
     state: `Episode ${p.episode}${p.paused ? ' · Paused' : ''}`,
-    ...(!p.paused ? { timestamps: { end: Math.ceil((now + (p.duration - p.time) / p.rate * 1000) / 1000) } } : {}),
-    ...(anime.cover.startsWith('https://') ? { assets: { large_image: anime.cover, large_text: anime.title.slice(0, 128) } } : {}),
+    ...(!p.paused ? { timestamps: {
+      start: Math.floor(now / 1000 - p.time / p.rate),
+      end: Math.ceil(now / 1000 + (p.duration - p.time) / p.rate),
+    } } : {}),
+    ...(Object.keys(assets).length ? { assets } : {}),
   };
 }
 
@@ -104,13 +113,13 @@ export function createDiscordPresence(clientId = process.env.MOEWATCH_DISCORD_AP
   }
   return {
     enabled: /^\d+$/.test(clientId),
-    update(p: DiscordPlayback, anime: Pick<Anime, 'title' | 'cover'>) {
+    update(p: DiscordPlayback, anime: Pick<Anime, 'title' | 'cover'>, user?: PresenceUser | null) {
       if (!/^\d+$/.test(clientId)) return false;
       if (owner && owner !== p.session && expires > Date.now()) return false;
       if (!owner && p.paused) return false;
       owner = p.session; expires = Date.now() + 60_000;
       clearTimeout(expiry); expiry = setTimeout(() => clear(p.session), 60_000); expiry.unref();
-      activity = discordActivity(p, anime);
+      activity = discordActivity(p, anime, Date.now(), user);
       if (ready) publish(); else if (!connecting) connect();
       return true;
     },

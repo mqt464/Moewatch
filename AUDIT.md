@@ -1,5 +1,15 @@
 # Initial release audit
 
+## Version 0.1.8 hotfix audit
+
+Reviewed all pending changes to Discord presence, LAN install assets, touch navigation, scrollbar compatibility and regression tests. Excluded Mkissa code as requested.
+
+- Merged duplicate hover media blocks. No dead code or unused exports found in the changed code.
+- Checked profile propagation, playback timestamps, public branding allowlist and manifest MIME type.
+- Bumped npm, Tauri and Rust package versions to 0.1.8.
+
+Validation: 145 app/API tests and seven relay tests passed. Two opt-in tests skipped. Both mobile navigation tests passed in Chromium and WebKit. TypeScript unused-local and unused-parameter checks, production build, compiled Windows sidecar and sidecar smoke test passed. Interactive installation and installed-client upgrades were not tested locally. Native signing and updater artifacts run through the release workflow.
+
 ## Version 0.1.7 hotfix audit
 
 Reviewed the direct HTTP transport, provider adapters, shared DNS validation, media reads, desktop packaging, regression tests and paused mKissa research.

@@ -32,6 +32,8 @@ export function createSharedAccess(handler: (req: IncomingMessage, res: ServerRe
   if (!state.enabled) { res.writeHead(403).end(); return; }
   const url = new URL(req.url || '/', 'http://localhost');
   if (url.searchParams.get('access') === state.token) { res.writeHead(303, { Location: '/', 'Set-Cookie': `moewatch_access=${state.token}; Path=/; HttpOnly; SameSite=Lax`, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.end(); return; }
+  // Home-screen installers fetch public branding without the browser's session cookie.
+  if ((req.method === 'GET' || req.method === 'HEAD') && ['/manifest.webmanifest', '/apple-touch-icon.png', '/pwa-192.png', '/pwa-512.png', '/favicon.png'].includes(url.pathname)) { await handler(req, res); return; }
   const authorized = req.headers.cookie?.split(';').some(c => c.trim() === `moewatch_access=${state.token}`);
   if (!authorized) { res.writeHead(403).end('Open the link from Shared Access on the desktop app.'); return; }
   req.headers.cookie = `moewatch_session=${state.session}`;

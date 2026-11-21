@@ -34,6 +34,11 @@ test('shared access requires a link, shares the host session and data, and disco
   const token = new URL(enabled.urls[0]).searchParams.get('access');
   const lan = `http://127.0.0.1:${port}`;
   assert.equal((await fetch(lan)).status, 403);
+  for (const asset of ['/manifest.webmanifest', '/apple-touch-icon.png', '/pwa-192.png', '/pwa-512.png', '/favicon.png']) {
+   assert.equal((await fetch(lan + asset)).status, 200, `Install asset must load without session cookies: ${asset}`);
+  }
+  assert.equal((await fetch(lan + '/api/v1/shared-storage')).status, 403);
+  assert.equal((await fetch(lan + '/media/private.mp4')).status, 403);
   const entry = await fetch(`${lan}/?access=${token}`, { redirect: 'manual' });
   assert.equal(entry.status, 303);
   const cookie = entry.headers.get('set-cookie')!.split(';')[0];

@@ -44,7 +44,7 @@ main[tabindex="-1"]:focus { outline: none; }
 .hero-art-frame { position: absolute; inset: 0; z-index: -3; }
 button, .button { transition: color var(--motion-fast), background var(--motion-fast), border-color var(--motion-fast), transform var(--motion-fast) var(--ease-out); }
 .button:active, .icon-button:not(:disabled):active { transform: scale(.97); }
-.poster-link, .continue-card { display: block; border-radius: 6px; }
+.poster-link, .continue-card { display: block; border-radius: 6px; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .poster-link:active .poster-image, .continue-card:active .continue-art { transform: scale(.985); }
 .poster-image, .continue-art { transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast); }
 .poster-link:focus-visible .poster-image, .continue-card:focus-visible .continue-art { box-shadow: inset 0 0 0 2px var(--pink); }
@@ -154,14 +154,18 @@ html.no-view-transitions .page-scene { animation: page-enter 160ms var(--ease-ou
 .poster-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 32px 22px; }
 .poster { min-width: 0; }
 .poster-image { position: relative; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--surface); }
-.poster a:hover .poster-image .artwork, .poster a:focus-visible .poster-image .artwork { opacity: .88; }
-.poster a:hover h3, .poster a:focus-visible h3 { color: var(--pink); }
+.poster a:focus-visible .poster-image .artwork { opacity: .88; }
+.poster a:focus-visible h3 { color: var(--pink); }
+@media (hover: hover) and (pointer: fine) {
+  .poster a:hover .poster-image .artwork { opacity: .88; }
+  .poster a:hover h3 { color: var(--pink); }
+  .continue-card:hover .continue-art .artwork { opacity: .88; }
+  .continue-card:hover h3 { color: var(--pink); }
+}
 .poster h3 { font-size: 13px; line-height: 1.45; min-height: 2.9em; font-weight: 500; margin-top: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .poster p { font-size: 11px; color: var(--muted); margin-top: 5px; }
 .poster p > span { margin-inline: 7px; }
 .continue-art { aspect-ratio: 16 / 9; position: relative; border-radius: 6px; overflow: hidden; background: var(--surface); }
-.continue-card:hover .continue-art .artwork { opacity: .88; }
-.continue-card:hover h3 { color: var(--pink); }
 .continue-card h3 { font-size: 14px; font-weight: 500; margin-top: 12px; }
 .continue-card p { font-size: 11px; color: var(--muted); margin-top: 5px; }
 .progress-track { position: absolute; inset: auto 0 0; height: 3px; background: #ffffff35; }

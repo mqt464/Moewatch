@@ -296,7 +296,8 @@ export function createApiHandler(options: AppOptions = {}) {
         let anime = await animeById(update.animeId, controller.signal, true);
         if (anime && !anime.cover.startsWith('https://')) anime = await animeById(update.animeId, controller.signal);
         if (!anime || anime.episodes && update.episode > anime.episodes) throw new ApiError('NOT_FOUND', 'Episode not found', 404);
-        return send(response, 200, { accepted: discord.update(update, anime) });
+        const { user } = await account.status(request);
+        return send(response, 200, { accepted: discord.update(update, anime, user) });
       }
       if (route.startsWith('account')) {
         const callbackUrl = new URL('/api/v1/account/callback', process.env.MOEWATCH_PUBLIC_ORIGIN || authority.origin).toString();

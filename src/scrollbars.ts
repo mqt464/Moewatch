@@ -11,7 +11,7 @@ function installScrollbarActivity(): void {
 
   function readColors(element: HTMLElement): [string, string] | undefined {
     const style = getComputedStyle(element)
-    if (forcedColors.matches || style.scrollbarWidth !== 'auto' || style.scrollbarColor === 'auto')
+    if (!style.scrollbarColor || forcedColors.matches || style.scrollbarWidth !== 'auto' || style.scrollbarColor === 'auto')
       return
     const colors = style.scrollbarColor
     let depth = 0

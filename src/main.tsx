@@ -53,7 +53,7 @@ function Artwork({ src, alt = '', className = '', eager = false, fallback }: { s
   useEffect(() => { revealImage(); }, [src]);
   const failed = failedSource === src || !src;
   const loading = !failed && loadedSource !== src;
-  return <div className={`artwork-frame ${className ? `${className}-frame` : ''}`} aria-busy={loading || undefined}>{failed ? fallback ?? <span className="art-fallback" role="img" aria-label={alt || 'Artwork unavailable'}></span> : <img key={src} ref={image} className={`artwork ${loadedSource === src ? 'is-ready' : 'is-loading'} ${className}`} src={src} alt={alt} width={600} height={900} fetchPriority={eager ? 'high' : undefined} loading={eager ? 'eager' : 'lazy'} decoding="async" onLoad={revealImage} onError={() => setFailedSource(src)} />}{loading && <SkeletonBox className="artwork-loading" width="100%" height="100%" radius="inherit" />}</div>;
+  return <div className={`artwork-frame ${className ? `${className}-frame` : ''}`} aria-busy={loading || undefined}>{failed ? fallback ?? <span className="art-fallback" role="img" aria-label={alt || 'Artwork unavailable'}></span> : <img key={src} draggable={false} ref={image} className={`artwork ${loadedSource === src ? 'is-ready' : 'is-loading'} ${className}`} src={src} alt={alt} width={600} height={900} fetchPriority={eager ? 'high' : undefined} loading={eager ? 'eager' : 'lazy'} decoding="async" onLoad={revealImage} onError={() => setFailedSource(src)} />}{loading && <SkeletonBox className="artwork-loading" width="100%" height="100%" radius="inherit" />}</div>;
 }
 
 function Header() {
