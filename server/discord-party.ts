@@ -60,6 +60,8 @@ export function createNativeDiscordParty(options: { binary?: string; application
         return;
       }
       const event = value.event;
+      if (event?.type === 'diagnostic' && ['authorization', 'token', 'lobby', 'presence'].includes(event.stage)
+        && Number.isSafeInteger(event.code) && Number.isSafeInteger(event.status)) { emit({ type: 'diagnostic', stage: event.stage, code: event.code, status: event.status }); return; }
       if (event?.type === 'invite' && Number.isSafeInteger(event.animeId) && event.animeId > 0
         && Number.isSafeInteger(event.episode) && event.episode > 0 && event.episode <= 10000) { emit(event); return; }
       if (event?.type === 'disconnected') { emit(event); return; }

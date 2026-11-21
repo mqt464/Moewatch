@@ -33,6 +33,11 @@ test('native transport exchanges commands and SDK events without exposing creden
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(events.length, 2);
   assert.equal(events[0].type, 'invite');
+  child.stdout.write('{"event":{"type":"diagnostic","stage":"lobby","code":50001,"status":403,"token":"must not cross boundary"}}\n');
+  child.stdout.write('{"event":{"type":"diagnostic","stage":"arbitrary secret","code":0,"status":0}}\n');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(events.at(-1), { type: 'diagnostic', stage: 'lobby', code: 50001, status: 403 });
+  assert.equal(events.length, 3);
   await transport.leave();
   assert.equal(commands.at(-1)?.type, 'leave');
   assert.equal(JSON.stringify(events).includes('refresh'), false);

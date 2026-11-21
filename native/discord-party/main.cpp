@@ -48,6 +48,13 @@ static std::string secret() {
     for (auto byte : bytes) { value += "0123456789abcdef"[byte >> 4]; value += "0123456789abcdef"[byte & 15]; }
     return value;
 }
+static discordpp::Activity watch_activity(bool in_party) {
+    discordpp::Activity activity;
+    // Discord's game invite UI uses Playing activities; solo presence can remain Watching.
+    activity.SetType(in_party ? discordpp::ActivityTypes::Playing : discordpp::ActivityTypes::Watching);
+    activity.SetSupportedPlatforms(discordpp::ActivityGamePlatforms::Desktop);
+    return activity;
+}
 
 class Bridge {
     discordpp::Client client;
@@ -63,6 +70,9 @@ class Bridge {
 
     void respond(uint64_t id, bool ok) { if (id) output({{"id", id}, {"ok", ok}}); }
     void disconnected() { output({{"event", {{"type", "disconnected"}}}}); }
+    void diagnostic(const char* stage, const discordpp::ClientResult& result) {
+        if (!result.Successful()) output({{"event", {{"type", "diagnostic"}, {"stage", stage}, {"code", result.ErrorCode()}, {"status", static_cast<int>(result.Status())}}}});
+    }
     void save_token() {
         std::filesystem::create_directories(token_path.parent_path());
         const auto encrypted = protect(json{{"refresh", refresh_token}, {"room", room ? room : previous_room}}.dump(), false);
@@ -74,6 +84,7 @@ class Bridge {
         return [this, restoring](discordpp::ClientResult result, std::string access, std::string refresh,
                                  discordpp::AuthorizationTokenType type, int32_t, std::string) {
             if (!result.Successful()) {
+                diagnostic("token", result);
                 authorizing = false;
                 if (restoring) { refresh_token.clear(); if (!playback.is_null() || !pending_secret.empty()) authorize(); }
                 else disconnected();
@@ -82,6 +93,7 @@ class Bridge {
             if (!refresh.empty()) refresh_token = std::move(refresh);
             try { save_token(); } catch (...) { authorizing = false; disconnected(); return; }
             client.UpdateToken(type, access, [this](discordpp::ClientResult updated) {
+                diagnostic("token", updated);
                 authorizing = false;
                 if (updated.Successful()) client.Connect(); else disconnected();
             });
@@ -96,6 +108,7 @@ class Bridge {
         args.SetScopes(discordpp::Client::GetDefaultCommunicationScopes());
         args.SetCodeChallenge(verifier.Challenge());
         client.Authorize(args, [this, code_verifier = verifier.Verifier()](discordpp::ClientResult result, std::string code, std::string redirect) {
+            diagnostic("authorization", result);
             if (!result.Successful()) { authorizing = false; disconnected(); return; }
             client.GetToken(app_id, code, code_verifier, redirect, token_callback(false));
         });
@@ -107,9 +120,7 @@ class Bridge {
     }
     void publish_presence() {
         if (playback.is_null() && room == 0) { client.ClearRichPresence(); return; }
-        discordpp::Activity activity;
-        // Discord's game invite UI uses Playing activities; solo presence can remain Watching.
-        activity.SetType(room && ready ? discordpp::ActivityTypes::Playing : discordpp::ActivityTypes::Watching);
+        auto activity = watch_activity(room && ready);
         activity.SetDetails(presence.is_object() ? presence.value("details", "Watching together") : "Watching together");
         activity.SetState(presence.is_object() ? presence.value("state", "Watchparty") : "Watchparty");
         if (presence.is_object() && presence.contains("assets")) {
@@ -141,7 +152,7 @@ class Bridge {
                 secrets.SetJoin(room_secret + destination); activity.SetSecrets(secrets);
             }
         }
-        client.UpdateRichPresence(activity, [](discordpp::ClientResult) {});
+        client.UpdateRichPresence(activity, [this](discordpp::ClientResult result) { diagnostic("presence", result); });
     }
     void publish_members(bool reconnected = false) {
         if (!ready) return;
@@ -171,7 +182,7 @@ class Bridge {
         client.CreateOrJoinLobby(target, [this, invited, target, operation, old_room](discordpp::ClientResult result, uint64_t id) {
             if (operation != generation) { if (result.Successful()) client.LeaveLobby(id, [](discordpp::ClientResult) {}); return; }
             joining = false;
-            if (!result.Successful()) { disconnected(); return; }
+            if (!result.Successful()) { diagnostic("lobby", result); disconnected(); return; }
             room = id; room_secret = target; guest = invited; last_members.clear();
             if (old_room && old_room != id) client.LeaveLobby(old_room, [](discordpp::ClientResult) {});
             if (previous_room && previous_room != id && previous_room != old_room) client.LeaveLobby(previous_room, [](discordpp::ClientResult) {});
@@ -297,6 +308,10 @@ public:
 int wmain(int argc, wchar_t** argv) {
     try {
         if (argc == 2 && std::wstring(argv[1]) == L"--self-test") {
+            const auto activity = watch_activity(true);
+            if (activity.Type() != discordpp::ActivityTypes::Playing || activity.SupportedPlatforms() != discordpp::ActivityGamePlatforms::Desktop) {
+                output({{"ok", false}, {"error", "Watchparty activity must support desktop invitations"}}); return 1;
+            }
             const auto capability = secret();
             if (!std::regex_match(capability, std::regex("mw1\\.[0-9a-f]{64}")) || protect(protect("test credential", false), true) != "test credential") return 1;
             discordpp::Client client;

@@ -253,6 +253,7 @@ export function createApiHandler(options: AppOptions = {}) {
         const address = request.socket.remoteAddress;
         if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address || '')) throw new ApiError('INVALID_REQUEST', 'Watchparties are available on this device only', 403);
         if (method === 'GET' && route === 'discord/party') return send(response, 200, party.status());
+        if (method === 'GET' && route === 'discord/party/diagnostics') return send(response, 200, party.diagnostics());
         if (method === 'GET' && route === 'discord/party/events') { party.stream(response); return; }
         if (method === 'POST') {
           if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);

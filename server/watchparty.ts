@@ -5,6 +5,7 @@ import { ApiError } from './infrastructure/errors';
 // The native Discord SDK adapter supplies authenticated identities and connected members.
 // This boundary never accepts an identity or lobby membership from the web player.
 export type DiscordPartyEvent =
+  | { type: 'diagnostic'; stage: string; code: number; status: number }
   | { type: 'invite'; animeId: number; episode: number }
   | { type: 'members'; room: string; self: string; members: PartyMember[]; reconnected?: boolean }
   | { type: 'message'; room: string; sender: string; data: unknown }
@@ -24,6 +25,7 @@ export function createWatchparty(transport?: DiscordPartyTransport) {
   let clock = 0;
   let blocked = false;
   let queue = Promise.resolve();
+  let connection: { stage: string; code: number; status: number } | null = null;
   const streams = new Set<ServerResponse>();
   const publish = () => {
     for (const stream of streams) {
@@ -46,11 +48,13 @@ export function createWatchparty(transport?: DiscordPartyTransport) {
     queue = queue.then(async () => { if (!blocked && state.room === room) await transport.send(update); }).catch(() => { if (state.room === room) fail(); });
   }
   const unsubscribe = transport?.subscribe(event => {
+    if (event.type === 'diagnostic') { connection = { stage: event.stage, code: event.code, status: event.status }; return; }
     if (event.type === 'invite') { state = { ...state, destination: { animeId: event.animeId, episode: event.episode }, error: '' }; publish(); return; }
     if (event.type === 'disconnected') { if (state.room) fail(); return; }
     if (event.type === 'members') {
       const previous = state;
       const changedRoom = previous.room !== event.room;
+      if (event.room) connection = null;
       if (changedRoom) { clock = 0; blocked = false; }
       if (event.reconnected) blocked = false;
       state = { ...state, room: event.room, self: event.self, members: event.members,
@@ -75,6 +79,7 @@ export function createWatchparty(transport?: DiscordPartyTransport) {
   });
   return {
     status: () => state,
+    diagnostics: () => ({ hasPlayback: localPlayback !== null, connection }),
     stream(response: ServerResponse) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
       response.write(`data: ${JSON.stringify(state)}\n\n`);

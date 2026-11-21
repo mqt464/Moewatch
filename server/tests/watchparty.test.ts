@@ -20,6 +20,17 @@ function fixture() {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+test('invite diagnostics retain safe failure codes without blocking solo playback and clear on lobby recovery', async () => {
+  const f = fixture();
+  await f.party.advertise(playback);
+  f.event({ type: 'diagnostic', stage: 'lobby', code: 50001, status: 403 });
+  assert.deepEqual(f.party.diagnostics(), { hasPlayback: true, connection: { stage: 'lobby', code: 50001, status: 403 } });
+  assert.equal(f.party.status().error, '');
+  f.event({ type: 'members', room: 'room', self: '10', members: [member('10')] });
+  assert.equal(f.party.diagnostics().connection, null);
+  f.party.close();
+});
+
 test('SDK absence stays disabled and does not break standalone playback', async () => {
   const party = createWatchparty();
   assert.equal(party.status().enabled, false);

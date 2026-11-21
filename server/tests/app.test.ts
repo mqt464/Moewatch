@@ -46,6 +46,9 @@ test('watchparty routes stay disabled without the native SDK and reject invalid 
   const state = await (await fetch(`${root}/api/v1/discord/party`)).json();
   assert.equal(state.enabled, false);
   assert.deepEqual(state.members, []);
+  const diagnostics = await fetch(`${root}/api/v1/discord/party/diagnostics`);
+  assert.equal(diagnostics.status, 200);
+  assert.deepEqual(await diagnostics.json(), { hasPlayback: false, connection: null });
   const post = (path: string, body: unknown) => fetch(`${root}/api/v1/discord/party/${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
