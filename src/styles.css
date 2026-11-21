@@ -555,3 +555,28 @@ body:has(a[data-player-transition="true"]) :is(.home-hero, .detail-hero),
 ::view-transition-new(navigation):only-child { animation: player-chrome-in 120ms ease-out 160ms backwards; }
 ::view-transition-old(player-heading), ::view-transition-old(player-controls) { animation: header-exit 80ms ease-out both; }
 @keyframes header-exit { to { opacity: 0; filter: blur(3px); } }
+
+/* Loading snapshots must not extend the document beyond a carousel viewport. */
+html, body { max-width: 100%; overflow-x: clip; }
+.home-content [skullet-layer], .scroll-frame [skullet-layer] { overflow: hidden; }
+::view-transition { pointer-events: none; }
+@media (pointer: coarse) {
+  .header nav a { min-width: 44px; min-height: 44px; }
+  .header { padding-top: env(safe-area-inset-top); height: calc(88px + env(safe-area-inset-top)); }
+}
+@media (pointer: coarse) and (max-width: 760px) {
+  .header { height: calc(80px + env(safe-area-inset-top)); }
+}
+@media (pointer: coarse) and (max-width: 480px) {
+  .header { padding-top: calc(18px + env(safe-area-inset-top)); height: calc(108px + env(safe-area-inset-top)); }
+}
+html { overscroll-behavior-x: none; }
+@media (pointer: coarse) and (max-width: 760px) {
+  .page-content { padding-top: calc(120px + env(safe-area-inset-top)); }
+}
+@media (pointer: coarse) and (max-width: 600px) {
+  .detail-heading { padding-top: calc(140px + env(safe-area-inset-top)); }
+}
+@media (pointer: coarse) and (max-width: 480px) {
+  .page-content { padding-top: calc(145px + env(safe-area-inset-top)); }
+}

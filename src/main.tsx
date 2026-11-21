@@ -30,7 +30,7 @@ type LibraryContextValue = { library: Library; toggle: (anime: Anime) => void; u
 const LibraryContext = React.createContext<LibraryContextValue>({ library: emptyLibrary, toggle: () => {}, update: () => {} });
 const useLibrary = () => React.useContext(LibraryContext);
 
-const motionAllowed = () => typeof document.startViewTransition === 'function' && document.documentElement.dataset.reduceMotion !== 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const motionAllowed = () => !window.matchMedia('(pointer: coarse)').matches && typeof document.startViewTransition === 'function' && document.documentElement.dataset.reduceMotion !== 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function Link(props: LinkProps) {
   const transitioning = useViewTransitionState(props.to);

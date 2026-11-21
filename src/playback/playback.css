@@ -236,3 +236,5 @@ html[data-reduce-motion="true"] .player-backdrop { transition: none; }
  .next-preview { left: auto; right: 0; width: min(320px,calc(100cqw - 32px)); transform-origin: bottom right; }
 }
 @container (max-width:700px) { .volume-slider { display: none; } }
+
+@media (pointer: coarse) { .fullscreen-control { display: none; } }

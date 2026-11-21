@@ -112,7 +112,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const playerError = error || party.error || (!localSource && availability.error ? 'Sources could not be checked. Try another provider.' : '');
   function reportError(message: string) { video.current?.pause(); setBuffering(false); setError(message); }
   return <div className="watch-content" aria-label="Episode player">
-    <header className="cinema-header"><Link viewTransition={!preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
+    <header className="cinema-header"><Link viewTransition={!window.matchMedia('(pointer: coarse)').matches && !preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
     <div className="player-shell">
       <img className={`player-backdrop${(source && revealedSource === source.url) || playerError || (!source && !findingSource) ? ' is-revealed' : ''}`} src={anime.banner || anime.cover} alt="" aria-hidden="true" />
       {source ? <Player key={source.url} source={source} videoRef={video} label={`${anime.title}, episode ${episode}`} onSave={save} onReady={loaded} onFirstFrame={() => setRevealedSource(source.url)} onBuffering={setBuffering} onClick={() => togglePlayback(video, reportError)} onError={reportError} /> : null}

@@ -60,6 +60,7 @@ export function createNativeDiscordParty(options: { binary?: string; application
         return;
       }
       const event = value.event;
+      if (event?.type === 'full') { emit({ type: 'full' }); return; }
       if (event?.type === 'diagnostic' && ['authorization', 'token', 'lobby', 'presence'].includes(event.stage)
         && Number.isSafeInteger(event.code) && Number.isSafeInteger(event.status)) { emit({ type: 'diagnostic', stage: event.stage, code: event.code, status: event.status }); return; }
       if (event?.type === 'invite' && Number.isSafeInteger(event.animeId) && event.animeId > 0

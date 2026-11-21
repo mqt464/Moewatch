@@ -24,6 +24,8 @@ test.afterAll(async () => { await new Promise<void>(done => server.close(() => d
 
 test('production PWA installs icons and reloads offline without caching API or media', async ({ page, context }) => {
  await page.goto(origin);
+ await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
+ await expect(page.locator('meta[name="apple-mobile-web-app-status-bar-style"]')).toHaveAttribute('content', 'black-translucent');
  const manifest = await page.evaluate(async () => (await fetch('/manifest.webmanifest')).json());
  expect(manifest.display).toBe('standalone');
  for (const icon of manifest.icons) {

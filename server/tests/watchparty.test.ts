@@ -20,6 +20,24 @@ function fixture() {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+test('a full party reports its ten-person limit through the existing player error', () => {
+  const f = fixture();
+  f.event({ type: 'full' });
+  assert.match(f.party.status().error, /10 people/);
+  assert.equal(f.party.status().room, '');
+  f.party.close();
+});
+
+test('rejecting a full destination preserves the current party', () => {
+  const f = fixture();
+  f.event({ type: 'members', room: 'existing', self: '1', members: [member('1'), member('2')] });
+  f.event({ type: 'full' });
+  assert.equal(f.party.status().room, 'existing');
+  assert.equal(f.party.status().members.length, 2);
+  assert.match(f.party.status().error, /10 people/);
+  f.party.close();
+});
+
 test('invite diagnostics retain safe failure codes without blocking solo playback and clear on lobby recovery', async () => {
   const f = fixture();
   await f.party.advertise(playback);

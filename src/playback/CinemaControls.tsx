@@ -36,6 +36,25 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     document.addEventListener('pointerdown', dismiss);
     return () => document.removeEventListener('pointerdown', dismiss);
   }, [panel]);
+  useEffect(() => {
+    const root = document.querySelector('.watch-content');
+    let requested = false;
+    let disposed = false;
+    const enter = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('a')) return;
+      if (!window.matchMedia('(pointer: coarse)').matches || !document.fullscreenEnabled || document.fullscreenElement) return;
+      requested = true;
+      void document.documentElement.requestFullscreen().then(() => {
+        if (disposed && document.fullscreenElement === document.documentElement) return document.exitFullscreen();
+      }).catch(() => { requested = false; });
+    };
+    root?.addEventListener('click', enter);
+    return () => {
+      disposed = true;
+      root?.removeEventListener('click', enter);
+      if (requested && document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {});
+    };
+  }, [videoRef]);
   const nextRef = useRef(next); nextRef.current = next;
   useEffect(() => {
     const element = videoRef.current; if (!element) return;
@@ -66,7 +85,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   useEffect(() => { const update=() => setFull(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange',update); return () => document.removeEventListener('fullscreenchange',update); }, []);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); notifyPartyControl(videoRef.current, 'seek'); } }
   function toggle() { togglePlayback(videoRef, onError); }
-  async function fullscreen() { setNote(''); try { if (document.fullscreenElement) { await document.exitFullscreen(); screen.orientation?.unlock?.(); } else { const root = videoRef.current?.closest('.watch-content'); const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null; if (root?.requestFullscreen) { await root.requestFullscreen(); if (window.matchMedia('(pointer: coarse)').matches) { const orientation = screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> }; await orientation?.lock?.('landscape').catch(() => {}); } } else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen(); else setNote('Fullscreen is unavailable in this browser.'); } } catch { setNote('Fullscreen is unavailable in this browser.'); } }
+  async function fullscreen() { if (window.matchMedia('(pointer: coarse)').matches) return; setNote(''); try { if (document.fullscreenElement) { await document.exitFullscreen(); screen.orientation?.unlock?.(); } else { const root = videoRef.current?.closest('.watch-content'); const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null; if (root?.requestFullscreen) { await root.requestFullscreen(); if (window.matchMedia('(pointer: coarse)').matches) { const orientation = screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> }; await orientation?.lock?.('landscape').catch(() => {}); } } else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen(); else setNote('Fullscreen is unavailable in this browser.'); } } catch { setNote('Fullscreen is unavailable in this browser.'); } }
   useEffect(() => {
     const key=(event:KeyboardEvent) => {
       if (event.key==='Escape' && panel) { setPanel(''); document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus(); return; }
@@ -88,7 +107,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   const active=skip.intro && time>=skip.intro.start && time<skip.intro.end ? {label:'Skip opening',...skip.intro} : skip.outro && time>=skip.outro.start && time<skip.outro.end ? {label:'Skip ending',...skip.outro} : null;
   const hidden=idle && !scrub && !paused && !renderedPanel && countdown===null;
   useEffect(() => {const root=videoRef.current?.closest('.watch-content');root?.classList.toggle('controls-hidden',hidden);return () => root?.classList.remove('controls-hidden');},[hidden,videoRef]);
-  const icon=(label:string,action:()=>void,child:ReactNode,disabled=false) => <button type="button" className="cinema-icon" aria-label={label} title={label} onClick={action} disabled={disabled}>{child}{label==='Next episode'?<span className="control-caption">Next</span>:label==='Fullscreen'||label==='Exit fullscreen'?<span className="control-caption">Fullscreen</span>:null}</button>;
+  const icon=(label:string,action:()=>void,child:ReactNode,disabled=false) => <button type="button" className={'cinema-icon'+(label==='Fullscreen'||label==='Exit fullscreen'?' fullscreen-control':'')} aria-label={label} title={label} onClick={action} disabled={disabled}>{child}{label==='Next episode'?<span className="control-caption">Next</span>:label==='Fullscreen'||label==='Exit fullscreen'?<span className="control-caption">Fullscreen</span>:null}</button>;
   return <>
     <div className="subtitle-overlay" role="group" aria-label="Subtitles">{cues.filter(cue => time>=cue.start && time<cue.end).map((cue,index) => <span key={index}>{cue.text}</span>)}</div>
     <div className={'cinema-bottom'+(hidden?' is-idle':'')+(renderedPanel?' has-panel':'')} inert={hidden} aria-hidden={hidden}>

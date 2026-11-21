@@ -18,6 +18,7 @@
 
 using json = nlohmann::json;
 using namespace std::chrono_literals;
+static constexpr int party_limit = 10;
 
 static void output(const json& value) { std::cout << value.dump() << std::endl; }
 static std::string read_file(const std::filesystem::path& path) {
@@ -63,7 +64,8 @@ class Bridge {
     std::filesystem::path token_path;
     std::string refresh_token, pending_secret, room_secret;
     uint64_t room = 0, previous_room = 0;
-    bool ready = false, authorizing = false, auth_attempted = false, joining = false, guest = false, reconnecting = false;
+    bool ready = false, authorizing = false, auth_attempted = false, joining = false, reconnecting = false;
+    bool left_party = false;
     unsigned generation = 0;
     json playback = nullptr, presence = nullptr;
     std::string last_members;
@@ -142,11 +144,11 @@ class Bridge {
             int count = 0;
             for (const auto& member : members()) if (member.Connected()) ++count;
             discordpp::ActivityParty party;
-            party.SetId(std::to_string(room)); party.SetCurrentSize(std::max(1, count)); party.SetMaxSize(1000);
+            party.SetId(std::to_string(room)); party.SetCurrentSize(std::max(1, count)); party.SetMaxSize(party_limit);
             party.SetPrivacy(discordpp::ActivityPartyPrivacy::Private);
             activity.SetParty(party);
-            // Only the original inviter advertises the capability. Guests cannot re-invite through their presence.
-            if (!guest && !room_secret.empty()) {
+            // Remaining participants can invite someone back after the original inviter leaves.
+            if (!room_secret.empty()) {
                 discordpp::ActivitySecrets secrets;
                 const auto destination = playback.is_object() ? ":" + std::to_string(playback.value("animeId", uint64_t{0})) + ":" + std::to_string(playback.value("episode", 0)) : "";
                 secrets.SetJoin(room_secret + destination); activity.SetSecrets(secrets);
@@ -173,17 +175,26 @@ class Bridge {
     }
     void ensure_room() {
         if (!ready || joining) return;
+        if (left_party && pending_secret.empty()) return;
         if (pending_secret.empty() && (room || playback.is_null())) return;
         const bool invited = !pending_secret.empty();
         const auto target = invited ? std::exchange(pending_secret, {}) : secret();
         const auto operation = ++generation;
         const auto old_room = room;
         joining = true;
-        client.CreateOrJoinLobby(target, [this, invited, target, operation, old_room](discordpp::ClientResult result, uint64_t id) {
+        client.CreateOrJoinLobby(target, [this, target, operation, old_room](discordpp::ClientResult result, uint64_t id) {
             if (operation != generation) { if (result.Successful()) client.LeaveLobby(id, [](discordpp::ClientResult) {}); return; }
             joining = false;
             if (!result.Successful()) { diagnostic("lobby", result); disconnected(); return; }
-            room = id; room_secret = target; guest = invited; last_members.clear();
+            int count = 0;
+            const auto joined = client.GetLobbyHandle(id);
+            if (joined) for (const auto& member : joined->LobbyMembers()) if (member.Connected()) ++count;
+            if (count > party_limit) {
+                left_party = !old_room;
+                client.LeaveLobby(id, [](discordpp::ClientResult) {});
+                output({{"event", {{"type", "full"}}}}); return;
+            }
+            room = id; room_secret = target; last_members.clear(); left_party = false;
             if (old_room && old_room != id) client.LeaveLobby(old_room, [](discordpp::ClientResult) {});
             if (previous_room && previous_room != id && previous_room != old_room) client.LeaveLobby(previous_room, [](discordpp::ClientResult) {});
             previous_room = 0;
@@ -282,9 +293,10 @@ public:
             if (text.size() > 2000) { respond(id, false); return; }
             client.SendLobbyMessage(room, text, [this, id](discordpp::ClientResult result, uint64_t) { respond(id, result.Successful()); });
         } else if (type == "leave") {
+            left_party = true;
             ++generation; joining = false; pending_secret.clear();
             playback = nullptr;
-            const auto old = std::exchange(room, uint64_t{0}); room_secret.clear(); guest = false; last_members.clear();
+            const auto old = std::exchange(room, uint64_t{0}); room_secret.clear(); last_members.clear();
             previous_room = old;
             publish_members();
             try { save_token(); } catch (...) { /* Leaving still succeeds when credential storage is unavailable. */ }

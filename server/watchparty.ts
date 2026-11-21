@@ -5,6 +5,7 @@ import { ApiError } from './infrastructure/errors';
 // The native Discord SDK adapter supplies authenticated identities and connected members.
 // This boundary never accepts an identity or lobby membership from the web player.
 export type DiscordPartyEvent =
+  | { type: 'full' }
   | { type: 'diagnostic'; stage: string; code: number; status: number }
   | { type: 'invite'; animeId: number; episode: number }
   | { type: 'members'; room: string; self: string; members: PartyMember[]; reconnected?: boolean }
@@ -48,6 +49,7 @@ export function createWatchparty(transport?: DiscordPartyTransport) {
     queue = queue.then(async () => { if (!blocked && state.room === room) await transport.send(update); }).catch(() => { if (state.room === room) fail(); });
   }
   const unsubscribe = transport?.subscribe(event => {
+    if (event.type === 'full') { state = { ...state, enabled: true, error: 'This watchparty is full. The limit is 10 people.' }; publish(); return; }
     if (event.type === 'diagnostic') { connection = { stage: event.stage, code: event.code, status: event.status }; return; }
     if (event.type === 'invite') { state = { ...state, destination: { animeId: event.animeId, episode: event.episode }, error: '' }; publish(); return; }
     if (event.type === 'disconnected') { if (state.room) fail(); return; }

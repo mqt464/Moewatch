@@ -706,3 +706,22 @@ test('local event stream recovery restores playback without sending another grou
   await expect(page.locator('.player-empty')).toHaveCount(0);
   expect(commands).toHaveLength(1);
 });
+
+
+test.describe('mobile immersive player', () => {
+ test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+ test('mobile player fills viewport and omits fullscreen control', async ({ page }) => {
+  await fixture(page);
+  await expect(page.getByRole('button', { name: 'Fullscreen', exact: true })).toBeHidden();
+  const bounds = (await page.locator('.watch-content').boundingBox())!;
+  expect(Math.round(bounds.width)).toBe(390);
+  expect(Math.round(bounds.height)).toBe(844);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  await page.evaluate(() => {
+   Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+   document.documentElement.requestFullscreen = async () => { document.documentElement.dataset.mobileFullscreenRequested = 'true'; };
+  });
+  await page.getByRole('button', { name: 'Play', exact: true }).tap();
+  await expect(page.locator('html')).toHaveAttribute('data-mobile-fullscreen-requested', 'true');
+ });
+});
