@@ -1,3 +1,4 @@
+import { usePresence } from '../motion';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings2, Captions, SkipForward } from 'lucide-react';
 import type { AudioPreference, SkipInterval, SkipTimesResponse, SubtitleTrack } from '../../shared/api';
@@ -23,11 +24,8 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const panelRef = useRef<HTMLElement>(null);
   const [renderedPanel, setRenderedPanel] = useState('');
-  useEffect(() => {
-    if (panel) { setRenderedPanel(panel); return; }
-    const timeout = setTimeout(() => setRenderedPanel(''), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 120);
-    return () => clearTimeout(timeout);
-  }, [panel]);
+  const { mounted, ...presence } = usePresence(Boolean(panel));
+  useEffect(() => { if (panel) setRenderedPanel(panel); else if (!mounted) setRenderedPanel(''); }, [panel, mounted]);
   useEffect(() => {
     if (!panel) return;
     const dismiss = (event: PointerEvent) => {
@@ -36,25 +34,6 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     document.addEventListener('pointerdown', dismiss);
     return () => document.removeEventListener('pointerdown', dismiss);
   }, [panel]);
-  useEffect(() => {
-    const root = document.querySelector('.watch-content');
-    let requested = false;
-    let disposed = false;
-    const enter = (event: Event) => {
-      if (event.target instanceof Element && event.target.closest('a')) return;
-      if (!window.matchMedia('(pointer: coarse)').matches || !document.fullscreenEnabled || document.fullscreenElement) return;
-      requested = true;
-      void document.documentElement.requestFullscreen().then(() => {
-        if (disposed && document.fullscreenElement === document.documentElement) return document.exitFullscreen();
-      }).catch(() => { requested = false; });
-    };
-    root?.addEventListener('click', enter);
-    return () => {
-      disposed = true;
-      root?.removeEventListener('click', enter);
-      if (requested && document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {});
-    };
-  }, [videoRef]);
   const nextRef = useRef(next); nextRef.current = next;
   useEffect(() => {
     const element = videoRef.current; if (!element) return;
@@ -82,12 +61,60 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     return () => controller.abort();
   }, [tracks,track]);
   useEffect(() => { if (countdown === null) return; if (countdown === 0) { setCountdown(null); nextRef.current?.(); return; } const timer=setTimeout(() => setCountdown(countdown-1),1000); return () => clearTimeout(timer); }, [countdown]);
-  useEffect(() => { const update=() => setFull(Boolean(document.fullscreenElement)); document.addEventListener('fullscreenchange',update); return () => document.removeEventListener('fullscreenchange',update); }, []);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    let nativeFull = false;
+    const enter = () => { nativeFull = true; video.controls = true; setFull(true); };
+    const leave = () => { nativeFull = false; video.controls = false; setFull(false); };
+    const sync = () => { if (document.fullscreenElement === video) enter(); else leave(); };
+    document.addEventListener('fullscreenchange', sync);
+    video.addEventListener('webkitbeginfullscreen', enter);
+    video.addEventListener('webkitendfullscreen', leave);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      video.removeEventListener('webkitbeginfullscreen', enter);
+      video.removeEventListener('webkitendfullscreen', leave);
+      if (nativeFull && 'webkitExitFullscreen' in video && typeof video.webkitExitFullscreen === 'function') {
+        try { video.webkitExitFullscreen(); } catch { /* The browser may already have dismissed the player. */ }
+      }
+      leave();
+      if (document.fullscreenElement === video) void document.exitFullscreen().catch(() => {});
+    };
+  }, [videoRef, sourceUrl]);
+  const nativeCaptions = useRef<{ video: HTMLVideoElement; track: TextTrack } | null>(null);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !full && !nativeCaptions.current) return;
+    if (nativeCaptions.current?.video !== video) nativeCaptions.current = { video, track: video.addTextTrack('subtitles', 'Subtitles') };
+    const nativeTrack = nativeCaptions.current.track;
+    nativeTrack.mode = 'hidden';
+    for (const cue of Array.from(nativeTrack.cues || [])) nativeTrack.removeCue(cue);
+    for (const cue of cues) nativeTrack.addCue(new VTTCue(cue.start, cue.end, cue.text));
+    nativeTrack.mode = full && cues.length ? 'showing' : 'disabled';
+    return () => { nativeTrack.mode = 'disabled'; };
+  }, [full, cues, videoRef, sourceUrl]);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); notifyPartyControl(videoRef.current, 'seek'); } }
   function toggle() { togglePlayback(videoRef, onError); }
-  async function fullscreen() { if (window.matchMedia('(pointer: coarse)').matches) return; setNote(''); try { if (document.fullscreenElement) { await document.exitFullscreen(); screen.orientation?.unlock?.(); } else { const root = videoRef.current?.closest('.watch-content'); const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null; if (root?.requestFullscreen) { await root.requestFullscreen(); if (window.matchMedia('(pointer: coarse)').matches) { const orientation = screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> }; await orientation?.lock?.('landscape').catch(() => {}); } } else if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen(); else setNote('Fullscreen is unavailable in this browser.'); } } catch { setNote('Fullscreen is unavailable in this browser.'); } }
+  async function fullscreen() {
+    const video = videoRef.current;
+    if (!video) return;
+    setNote('');
+    try {
+      if (document.fullscreenElement === video) await document.exitFullscreen();
+      else {
+        video.controls = true;
+        if ('webkitEnterFullscreen' in video && typeof video.webkitEnterFullscreen === 'function') video.webkitEnterFullscreen();
+        else await video.requestFullscreen();
+      }
+    } catch {
+      video.controls = false;
+      setNote('Fullscreen is unavailable in this browser.');
+    }
+  }
   useEffect(() => {
     const key=(event:KeyboardEvent) => {
+      if (videoRef.current?.controls) return;
       if (event.key==='Escape' && panel) { setPanel(''); document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus(); return; }
       if (event.target instanceof HTMLElement && (event.target.closest('button,a,input,select,textarea') || event.target.isContentEditable)) return;
       if (event.key===' ' || event.key==='k') { event.preventDefault(); toggle(); }
@@ -112,7 +139,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     <div className="subtitle-overlay" role="group" aria-label="Subtitles">{cues.filter(cue => time>=cue.start && time<cue.end).map((cue,index) => <span key={index}>{cue.text}</span>)}</div>
     <div className={'cinema-bottom'+(hidden?' is-idle':'')+(renderedPanel?' has-panel':'')} inert={hidden} aria-hidden={hidden}>
       {note && <p role="status">{note}</p>}
-      {renderedPanel && <section key={renderedPanel} ref={panelRef} inert={!panel} aria-hidden={!panel} className={"cinema-panel"+(renderedPanel==='subtitles'?' subtitle-panel':'')+(!panel?' is-closing':'')} aria-label={renderedPanel==='settings'?'Playback settings':'Subtitle settings'} onKeyDown={event => {if(event.key==='Escape'){setPanel('');document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus();}}}>
+      {renderedPanel && <section {...presence} ref={panelRef} className={"cinema-panel"+(renderedPanel==='subtitles'?' subtitle-panel':'')+(!panel?' is-closing':'')} aria-label={renderedPanel==='settings'?'Playback settings':'Subtitle settings'} onKeyDown={event => {if(event.key==='Escape'){setPanel('');document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus();}}}>
         {renderedPanel==='settings'? <>{children}<div className="player-options"><label className="autonext-option"><input type="checkbox" checked={autoNext} disabled={local} onChange={event=>{setAutoNext(event.target.checked);setCountdown(null);try{localStorage.setItem('moewatch-autonext',String(event.target.checked));}catch{/* Playback remains usable without storage. */}}}/>Autonext</label></div></>: <>
           <div className="language-choice" role="group" aria-label="Subtitles">
             <p>Subtitles</p>
@@ -132,7 +159,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
       <div className="timeline" onPointerDown={event => { touchScrubbing.current = event.pointerType === 'touch'; }} onPointerUp={event => { if (event.pointerType !== 'mouse') { touchScrubbing.current = false; setScrub(null); } }} onLostPointerCapture={() => { touchScrubbing.current = false; setScrub(null); }} onPointerMove={event => { if (!duration || event.pointerType === 'touch' && !touchScrubbing.current) return; const bounds = event.currentTarget.getBoundingClientRect(); const rotated = window.matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)').matches; const position = Math.max(0, Math.min(1, ((rotated ? event.clientY - bounds.top : event.clientX - bounds.left) - 6) / ((rotated ? bounds.height : bounds.width) - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => { touchScrubbing.current = false; setScrub(null); }} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><div className="timeline-segments" aria-hidden="true">{(['intro', 'outro'] as const).map(kind => { const interval = skip[kind]; return interval ? <span key={kind} className={`timeline-segment timeline-segment-${kind}`} style={{ left: `${interval.start / duration * 100}%`, width: `${(interval.end - interval.start) / duration * 100}%` }} /> : null; })}</div><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}${active ? active.label === 'Skip opening' ? ', opening' : ', ending' : ''}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setScrub({ time, position: duration ? time / duration : 0 }); }} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); if (touchScrubbing.current || event.currentTarget.matches(':focus-visible')) setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
       <div className="cinema-toolbar">
         <div className="transport">{icon(paused?'Play':'Pause',toggle,paused?<Play fill="currentColor"/>:<Pause fill="currentColor"/>,!sourceUrl)}<div className="volume-control">{icon(muted||!volume?'Unmute':'Mute',()=>{if(videoRef.current)videoRef.current.muted=!muted;},muted||!volume?<VolumeX/>:<Volume2/>)}<div className="volume-slider"><input style={{'--volume':`${(muted?0:volume)*100}%`} as React.CSSProperties} type="range" aria-label="Volume" aria-valuetext={`${Math.round((muted?0:volume)*100)}%`} min={0} max={1} step={0.05} value={muted?0:volume} onChange={event=>{if(videoRef.current){videoRef.current.volume=Number(event.target.value);videoRef.current.muted=false;}}}/><span className="volume-tooltip" aria-hidden="true" style={{left:`calc(${(muted?0:volume)*100}% + ${6-(muted?0:volume)*12}px)`}}>{Math.round((muted?0:volume)*100)}%</span></div></div></div>
-        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{icon(full?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),full?<Minimize/>:<Maximize/>)}</div>
+        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{icon(full?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),full?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
       </div>
     </div>
   </>;

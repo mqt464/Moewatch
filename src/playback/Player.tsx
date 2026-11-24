@@ -87,7 +87,7 @@ export function Player({ source, videoRef, label, onSave, onReady, onBuffering, 
       video.load();
     };
   }, [source.url, source.type, videoRef]);
-  return <video ref={videoRef} onClick={onClick} playsInline aria-label={label}
+  return <video ref={videoRef} onClick={event => { if (!event.currentTarget.controls) onClick?.(); }} playsInline aria-label={label}
     onVolumeChange={event => {
       const { volume, muted } = event.currentTarget;
       if (volume !== preferences.volume || muted !== preferences.muted) update({ volume, muted });

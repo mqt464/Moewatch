@@ -4,7 +4,7 @@ import { curated } from '../src/catalog';
 import { readFileSync } from 'node:fs';
 import { emptyParty, type PartyStatus } from '../shared/watchparty';
 const media=readFileSync('tests/fixtures/player-flower.mp4');
-async function fixture(page:Page, options: { dub?: boolean; subtitles?: boolean; providerSkips?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; skipUnavailable?: boolean; party?: boolean } = {}) {
+async function fixture(page:Page, options: { waitForMedia?: boolean; dub?: boolean; subtitles?: boolean; providerSkips?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; skipUnavailable?: boolean; party?: boolean } = {}) {
  let party: PartyStatus = { ...emptyParty, enabled: true, room: 'fixture-room', self: '10', members: ['Mina', 'Alex', 'Sam', 'Rin', 'Yuki', 'Kai'].map((name,index) => ({ id: String(index + 10), name, avatar: 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"><rect width="30" height="30" fill="${['#4aaf74','#e4b37c','#8b83c9','#d58e9d','#7da6bf','#c59cba'][index]}"/><circle cx="15" cy="11" r="5" fill="#fff"/><path d="M5 30v-3a10 10 0 0 1 20 0v3" fill="#fff"/></svg>`) })) };
  if (options.party) await page.addInitScript(() => {
    Object.defineProperty(window, 'EventSource', { value: class {
@@ -45,7 +45,7 @@ async function fixture(page:Page, options: { dub?: boolean; subtitles?: boolean;
  return route.fulfill({status:range?206:200,contentType:'video/mp4',headers:{'Accept-Ranges':'bytes','Content-Length':String(end-start+1),...(range?{'Content-Range':`bytes ${start}-${end}/${media.length}`}:{})},body:media.subarray(start,end+1)});
  });
  await page.goto('/watch/154587/1');
- await expect.poll(()=>page.locator('video').evaluate(v=>(v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+ if (options.waitForMedia !== false) await expect.poll(()=>page.locator('video').evaluate(v=>(v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
 }
 test('custom player plays real media, seeks, renders subtitles, skips and resumes',async({page})=>{
  await fixture(page);
@@ -166,7 +166,8 @@ test('both menus animate in and out and respect reduced motion',async({page})=>{
  for(const name of ['Playback settings','Subtitles']){
    await page.getByRole('button',{name,exact:true}).click();
    const card=page.locator('.cinema-panel');
-   await expect(card).toHaveCSS('animation-name','player-menu-in');
+   await expect(card).toHaveCSS('transition-property','opacity, transform');
+   await expect(card).toHaveAttribute('data-open','true');
    await page.locator('.cinema-header h1').click();
    await expect(card).toHaveClass(/is-closing/);
    await expect(card).toHaveAttribute('inert','');
@@ -174,7 +175,8 @@ test('both menus animate in and out and respect reduced motion',async({page})=>{
  }
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.getByRole('button',{name:'Playback settings',exact:true}).click();
- await expect(page.locator('.cinema-panel')).toHaveCSS('animation-name','none');
+ await expect(page.locator('.cinema-panel')).toHaveCSS('transform','none');
+ await expect(page.locator('.cinema-panel')).toHaveCSS('transition-duration','0.12s');
  await page.locator('.cinema-header h1').click();
  await expect(page.locator('.cinema-panel')).toHaveCount(0);
 });
@@ -205,6 +207,7 @@ test('next preview animates, time toggles above timeline and transport stays min
  await page.mouse.move(700,300);
  await expect(preview).toHaveCSS('opacity','0');
  await expect(preview).toBeHidden();
+ await page.keyboard.press('Tab');
  await next.focus();
  await expect(preview).toBeVisible();
  await page.keyboard.press('Enter');
@@ -414,7 +417,7 @@ test('subtitle and fullscreen failures leave playback usable', async ({ page }) 
  await page.getByRole('button', { name: 'Off', exact: true }).click();
  await expect(page.getByText('Subtitles could not be loaded.')).toHaveCount(0);
  await page.locator('.cinema-header h1').click();
- await page.locator('.watch-content').evaluate(element => { element.requestFullscreen = () => Promise.reject(new Error('Unavailable')); });
+ await page.locator('.player-shell video').evaluate(element => { element.requestFullscreen = () => Promise.reject(new Error('Unavailable')); });
  await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
  await expect(page.getByRole('status')).toHaveText('Fullscreen is unavailable in this browser.');
  await expect(page.locator('video')).toHaveJSProperty('paused', false);
@@ -710,9 +713,9 @@ test('local event stream recovery restores playback without sending another grou
 
 test.describe('mobile immersive player', () => {
  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
- test('mobile player fills viewport and omits fullscreen control', async ({ page }) => {
+ test('mobile landscape stays inline until native fullscreen is requested', async ({ page }) => {
   await fixture(page);
-  await expect(page.getByRole('button', { name: 'Fullscreen', exact: true })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Fullscreen', exact: true })).toBeVisible();
   const bounds = (await page.locator('.watch-content').boundingBox())!;
   expect(Math.round(bounds.width)).toBe(390);
   expect(Math.round(bounds.height)).toBe(844);
@@ -722,6 +725,121 @@ test.describe('mobile immersive player', () => {
    document.documentElement.requestFullscreen = async () => { document.documentElement.dataset.mobileFullscreenRequested = 'true'; };
   });
   await page.getByRole('button', { name: 'Play', exact: true }).tap();
-  await expect(page.locator('html')).toHaveAttribute('data-mobile-fullscreen-requested', 'true');
+  await expect(page.locator('html')).not.toHaveAttribute('data-mobile-fullscreen-requested', 'true');
+  await page.getByRole('button', { name: 'Pause', exact: true }).tap();
+  const video = page.locator('.player-shell video');
+  await video.evaluate(element => {
+   Object.defineProperty(element, 'webkitEnterFullscreen', { value: () => element.dispatchEvent(new Event('webkitbeginfullscreen')) });
+  });
+  await page.getByRole('button', { name: 'Subtitles', exact: true }).tap();
+  await page.getByRole('button', { name: 'On', exact: true }).tap();
+  await expect(page.locator('.subtitle-overlay')).toHaveText('A journey begins.');
+  await page.locator('.cinema-header h1').tap();
+  const time = await video.evaluate(element => element.currentTime);
+  await page.getByRole('button', { name: 'Fullscreen', exact: true }).tap();
+  await expect(video).toHaveJSProperty('controls', true);
+  await expect.poll(() => video.evaluate(element => element.textTracks[0]?.mode)).toBe('showing');
+  await video.dispatchEvent('click');
+  await expect(video).toHaveJSProperty('paused', true);
+  await video.dispatchEvent('webkitendfullscreen');
+  await expect(video).toHaveJSProperty('controls', false);
+  await expect.poll(() => video.evaluate(element => element.textTracks[0]?.mode)).toBe('disabled');
+  expect(await video.evaluate(element => element.currentTime)).toBe(time);
+  await video.dispatchEvent('webkitbeginfullscreen');
+  expect(await video.evaluate(element => element.textTracks[0]?.cues?.length)).toBe(1);
+  await video.dispatchEvent('webkitendfullscreen');
  });
+});
+test('player reverses pointer menus and keyboard opens immediately', async ({ page }) => {
+ await fixture(page);
+ const trigger = page.getByRole('button', { name: 'Playback settings', exact: true });
+ await trigger.click();
+ const panel = page.locator('.cinema-panel');
+ await page.evaluate(() => document.querySelector<HTMLButtonElement>('#player-settings')?.click());
+ await expect(panel).toHaveAttribute('inert', '');
+ await page.evaluate(() => document.querySelector<HTMLButtonElement>('#player-settings')?.click());
+ await expect(panel).toHaveAttribute('data-open', 'true');
+ await expect(panel).toHaveCSS('opacity', '1');
+ await page.keyboard.press('Escape'); await expect(panel).toHaveCount(0);
+ await trigger.press('Enter'); await expect(panel).toHaveCSS('transition-duration', '0s');
+ await page.keyboard.press('Escape');
+ await page.setViewportSize({ width: 390, height: 844 });
+ await trigger.click(); await expect(panel).toHaveCSS('transform-origin', /.+/);
+ await expect(panel).toHaveCSS('transition-duration', '0.22s, 0.22s');
+ await page.keyboard.press('Escape');
+ await page.evaluate(() => { document.documentElement.dataset.reduceMotion = 'true'; });
+ await trigger.click(); await expect(panel).toHaveCSS('transition-duration', '0.12s');
+ await expect(panel).toHaveCSS('transform', 'none');
+});
+
+test('next preview uses keyboard instantly and touch does not synthesize a reveal', async ({ page, browser }) => {
+ await fixture(page);
+ await page.getByRole('button', { name: 'Next episode', exact: true }).focus();
+ await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+ await expect(page.locator('.next-preview')).toHaveCSS('transition-duration', '0s');
+ await expect(page.locator('.next-preview')).toHaveCSS('opacity', '1');
+ const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+ const touch = await context.newPage(); await fixture(touch);
+ await touch.locator('.next-control').dispatchEvent('pointerover', { pointerType: 'touch' });
+ await expect(touch.locator('.next-preview')).toHaveCSS('visibility', 'hidden');
+ await context.close();
+});
+
+test.describe('mobile player scroll lock', () => {
+ test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+ test('player has no page scrollbar, blocks page swipes and unlocks after Back', async ({ page }) => {
+  await fixture(page, { waitForMedia: false });
+  await expect(page.getByRole('scrollbar', { name: 'Page scroll' })).toHaveCount(0);
+  await expect(page.locator('body')).toHaveCSS('position', 'fixed');
+  const prevented = await page.locator('.watch-content').evaluate(root => {
+   const event = new Event('touchmove', { bubbles: true, cancelable: true });
+   root.dispatchEvent(event);
+   return event.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+  await page.getByRole('button', { name: 'Playback settings', exact: true }).tap();
+  const panelPrevented = await page.locator('.cinema-panel').evaluate(root => {
+   const event = new Event('touchmove', { bubbles: true, cancelable: true });
+   root.dispatchEvent(event);
+   return event.defaultPrevented;
+  });
+  expect(panelPrevented).toBe(false);
+  await page.getByRole('link', { name: 'Back to series' }).tap();
+  await expect(page).toHaveURL(/\/anime\/154587$/);
+  await expect(page.locator('body')).not.toHaveCSS('position', 'fixed');
+ });
+});
+
+
+test('standard native fullscreen targets video and restores inline controls on exit', async ({ page }) => {
+ await fixture(page);
+ await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+ await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
+ await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', true);
+ await page.evaluate(() => document.exitFullscreen());
+ await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', false);
+});
+
+
+test('native player controls sync watchparty actions without remote echoes', async ({ page }) => {
+ const commands: unknown[] = [];
+ page.on('request', request => { if (request.url().endsWith('/discord/party/action')) commands.push(request.postDataJSON()); });
+ await fixture(page, { party: true });
+ const video = page.locator('.player-shell video');
+ await video.dispatchEvent('webkitbeginfullscreen');
+ await video.evaluate(element => element.play());
+ await expect.poll(() => commands.length).toBe(1);
+ await video.evaluate(element => element.pause());
+ await expect.poll(() => commands.length).toBe(2);
+ await video.evaluate(element => { element.currentTime = 3; });
+ await expect.poll(() => commands.length).toBe(3);
+ await video.evaluate(element => { element.playbackRate = 1.25; });
+ await expect.poll(() => commands.length).toBe(4);
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: {
+  enabled: true, active: true, destination: null, room: 'room', self: '10', members: [], error: '',
+  playback: { animeId: 154587, episode: 1, time: 1, paused: true, rate: 1, at: Date.now(), action: 'seek', clock: 100, sender: '20' },
+ } })));
+ await expect.poll(() => video.evaluate(element => element.currentTime)).toBeCloseTo(1, 1);
+ await video.dispatchEvent('webkitendfullscreen');
+ expect(commands).toHaveLength(4);
 });

@@ -1,3 +1,4 @@
+import { usePresence } from './motion';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Download, ExternalLink, Info, LogIn, LogOut, Settings2, UserRound } from 'lucide-react';
@@ -11,6 +12,7 @@ export function ProfileMenu() {
   const [failedAvatar, setFailedAvatar] = useState('');
   const avatar = user?.avatar && user.avatar !== failedAvatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" onError={() => setFailedAvatar(user.avatar)} /> : <UserRound aria-hidden="true" size={20} strokeWidth={1.5} />;
   const [open, setOpen] = useState(false);
+  const { mounted, ...presence } = usePresence(open);
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -44,7 +46,7 @@ export function ProfileMenu() {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true); }
     }}>{avatar}{available && <span className="profile-update-dot" aria-hidden="true" />}</button>
     {available && <span id={updateDescription} className="sr-only">Update available</span>}
-    {open && <div className="profile-menu" ref={menu} id={id} role="menu" aria-label="Profile" onKeyDown={event => {
+    {mounted && <div {...presence} className="profile-menu motion-popover" ref={menu} id={id} role="menu" aria-label="Profile" onKeyDown={event => {
       const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
       const index = items.indexOf(document.activeElement as HTMLElement);
       const next = event.key === 'ArrowDown' ? (index + 1) % items.length : event.key === 'ArrowUp' ? (index - 1 + items.length) % items.length : event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : null;

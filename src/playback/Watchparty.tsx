@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode,
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { apiRequest } from '../api';
-import { emptyParty, type PartyAction, type PartyPlayback, type PartyStatus } from '../../shared/watchparty';
+import { partySeekTarget, emptyParty, type PartyAction, type PartyPlayback, type PartyStatus } from '../../shared/watchparty';
 import { applyPartyPlayback, partyControlEvent } from './partyPlayback';
 
 const post = (path: string, value: unknown) => apiRequest(`/discord/party/${path}`, {
@@ -124,11 +124,22 @@ export function usePartyPlayer(videoRef: RefObject<HTMLVideoElement | null>, ani
       if (action === 'seek') seekTimer = setTimeout(send, 250);
       else send();
     };
+    const nativeCommand = (event: Event) => {
+      const { status } = current.current;
+      const update = status.playback;
+      if (!video.controls || !status.room || status.error) return;
+      const action = event.type === 'seeked' ? 'seek' : video.paused ? 'pause' : 'play';
+      // Remote media events already match the shared state and must not echo back.
+      if (update && (action === 'seek' ? partySeekTarget(update, video.currentTime, video.duration) === null : video.paused === update.paused && video.playbackRate === update.rate)) return;
+      command(new CustomEvent(partyControlEvent, { detail: action }));
+    };
+    const nativeEvents = ['play', 'pause', 'seeked', 'ratechange'];
+    nativeEvents.forEach(event => video.addEventListener(event, nativeCommand));
     video.addEventListener(partyControlEvent, command);
     const snapshotEvents = ['loadedmetadata', 'playing', 'pause', 'seeked', 'ratechange'];
     snapshotEvents.forEach(event => video.addEventListener(event, advertise));
     advertise();
-    return () => { clearTimeout(seekTimer); video.removeEventListener(partyControlEvent, command); snapshotEvents.forEach(event => video.removeEventListener(event, advertise)); };
+    return () => { clearTimeout(seekTimer); nativeEvents.forEach(event => video.removeEventListener(event, nativeCommand)); video.removeEventListener(partyControlEvent, command); snapshotEvents.forEach(event => video.removeEventListener(event, advertise)); };
   }, [animeId, episode, sourceUrl, local, party.status.enabled]);
   useEffect(() => {
     const recovered = disconnected.current && !party.status.error;

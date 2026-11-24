@@ -1,0 +1,46 @@
+
+.motion-popover,.undo-toast,.cinema-panel { opacity: 1; transform: none; transition: opacity var(--surface-duration) var(--ease-out), transform var(--surface-duration) var(--ease-out); }
+.motion-popover { --surface-duration: var(--motion-popover); --surface-hidden: scale(.97); transform-origin: top right; }
+.downloads-popover { transform-origin: calc(100% - 74px) top; }
+.undo-toast { --surface-duration: var(--motion-expand); --surface-hidden: translateY(8px); }
+.cinema-panel { --surface-duration: var(--motion-menu); --surface-hidden: translateY(8px) scale(.98); transform-origin: bottom right; }
+:is(.motion-popover,.undo-toast,.cinema-panel)[data-open="false"] { opacity: 0; transform: var(--surface-hidden); transition-duration: var(--motion-exit); pointer-events: none; }
+@starting-style { :is(.motion-popover,.undo-toast,.cinema-panel)[data-open="true"] { opacity: 0; transform: var(--surface-hidden); } }
+:is(.motion-popover,.cinema-panel)[data-instant="true"] { transition: none !important; }
+@media(max-width:600px) and (pointer:fine) {
+ .cinema-panel { --surface-duration: var(--motion-page); --surface-hidden: translateY(12px); transform-origin: bottom center; transition-timing-function: var(--ease-drawer); }
+}
+@media(max-width:600px) {
+ .series-facts { opacity: 0; transition: height var(--motion-expand) var(--ease-out), opacity var(--motion-expand) var(--ease-out); }
+ .series-facts[data-open="true"] { opacity: 1; }
+ .series-facts[data-instant="true"] { transition: none !important; }
+ .series-details-toggle svg { transition: transform var(--motion-fast) var(--ease-out); }
+ html[data-input="keyboard"] .series-details-toggle svg { transition: none; }
+}
+.next-preview { transform: none; transition: none; }
+@media(hover:hover) and (pointer:fine) {
+ .next-preview { transform: translateY(8px) scale(.98); transition: opacity var(--motion-preview) var(--ease-out), transform var(--motion-preview) var(--ease-out), visibility var(--motion-preview); }
+ .next-control:hover .next-preview { opacity: 1; visibility: visible; transform: none; }
+}
+html[data-input="keyboard"] .next-control:focus-within .next-preview { opacity: 1; visibility: visible; transform: none; transition: none !important; }
+
+@media(prefers-reduced-motion:reduce) {
+
+ :is(.motion-popover,.undo-toast,.cinema-panel) { transform: none !important; transition: opacity var(--motion-exit) var(--ease-out) !important; }
+ @starting-style { :is(.motion-popover,.undo-toast,.cinema-panel)[data-open="true"] { transform: none; } }
+ .next-preview { transform: none !important; }
+ @media(hover:hover) and (pointer:fine) { .next-preview { transition: opacity var(--motion-exit) var(--ease-out) !important; } }
+ @media(max-width:600px) { .series-facts { transition: opacity var(--motion-exit) var(--ease-out) !important; } .series-details-toggle svg { transition: none !important; } }
+
+}
+
+ html[data-reduce-motion="true"] :is(.motion-popover,.undo-toast,.cinema-panel) { transform: none !important; transition: opacity var(--motion-exit) var(--ease-out) !important; }
+ @starting-style { html[data-reduce-motion="true"] :is(.motion-popover,.undo-toast,.cinema-panel)[data-open="true"] { transform: none; } }
+ html[data-reduce-motion="true"] .next-preview { transform: none !important; }
+ @media(hover:hover) and (pointer:fine) { html[data-reduce-motion="true"] .next-preview { transition: opacity var(--motion-exit) var(--ease-out) !important; } }
+ @media(max-width:600px) { html[data-reduce-motion="true"] .series-facts { transition: opacity var(--motion-exit) var(--ease-out) !important; } html[data-reduce-motion="true"] .series-details-toggle svg { transition: none !important; } }
+
+:is(.motion-popover,.cinema-panel,.series-facts)[data-instant="true"],html[data-input="keyboard"] .next-control:focus-within .next-preview { transition: none !important; }
+
+html[data-input] :is(.motion-popover,.cinema-panel,.series-facts)[data-instant="true"] { transition: none !important; }
+html[data-input="keyboard"] :is(.motion-popover,.cinema-panel) { transition: none !important; }

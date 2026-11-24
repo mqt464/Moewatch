@@ -66,6 +66,7 @@ test('one series button starts downloads without a popup and header shows a mini
   await expect(popover.getByRole('button')).toHaveCount(0);
   await expect(popover.getByText('Downloads', { exact: true })).toHaveCount(0);
   await expect(page.locator('.downloads-trigger')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(popover).toHaveCSS('transform', 'none');
   const artwork = await popover.locator('.download-cover').boundingBox();
   const copy = await popover.locator('.download-copy').boundingBox();
   expect(artwork!.y).toBe(copy!.y);
@@ -82,6 +83,7 @@ test('one series button starts downloads without a popup and header shows a mini
   await page.getByRole('button', { name: /Downloads, 25%/ }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'artifacts/downloads/mobile-popover.png' });
+  await expect(popover).toHaveCSS('transform', 'none');
   const mobileArtwork = await popover.locator('.download-cover').boundingBox();
   const mobileCopy = await popover.locator('.download-copy').boundingBox();
   expect(mobileArtwork!.y).toBe(mobileCopy!.y);

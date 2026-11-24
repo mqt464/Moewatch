@@ -11,7 +11,13 @@
   --gutter: clamp(22px, 4.45vw, 64px);
   --motion-fast: 130ms;
   --motion-page: 220ms;
-  --ease-out: cubic-bezier(.2, .7, .2, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-exit: 120ms;
+  --motion-menu: 150ms;
+  --motion-popover: 160ms;
+  --motion-expand: 180ms;
+  --motion-preview: 140ms;
 }
 
 * { box-sizing: border-box; }
@@ -462,8 +468,8 @@ select { min-height: 44px; border: 1px solid #383037; border-radius: 6px; paddin
 @media (max-width: 600px) {
   .series-details-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: 0; background: transparent; color: #ded9dd; font-size: 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
   .series-details-toggle[aria-expanded=true] svg { transform: rotate(90deg); }
-  .synopsis:not(.details-expanded) { display: none; }
-  .synopsis.details-expanded { padding-top: 12px; }
+  .series-facts { overflow: hidden; }
+  .series-facts .synopsis { padding-top: 12px; }
   body:has(.detail-hero) .header nav { font-size: 14px; }
   .detail-hero .hero-art { object-position: 82% center; }
 }
@@ -580,3 +586,10 @@ html { overscroll-behavior-x: none; }
 @media (pointer: coarse) and (max-width: 480px) {
   .page-content { padding-top: calc(145px + env(safe-area-inset-top)); }
 }
+
+/* Playback owns the viewport. Keep the document and its history gestures out of the drag path. */
+html:has(.watch-main) { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body:has(.watch-main) { position: fixed; inset: 0; width: 100%; height: 100%; padding: 0; overflow: hidden; overscroll-behavior: none; }
+.watch-main { height: 100%; min-height: 0; overflow: clip; }
+.watch-main .page-scene { height: 100%; animation: none; }
+.watch-main .document-scrollbar, .watch-main ~ .document-scroll-fades { display: none; }

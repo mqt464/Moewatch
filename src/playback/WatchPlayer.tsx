@@ -52,6 +52,26 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const nextEpisode = navigation.find(number => number > episode);
   const nextArtwork = anime.episodeArtwork?.find(entry => entry.number === nextEpisode);
 
+  useEffect(() => {
+    const root = document.querySelector<HTMLElement>('.watch-content');
+    // Safari can ignore CSS overscroll rules for browser history gestures.
+    const preventPageSwipe = (event: TouchEvent) => {
+      if (event.target instanceof Element && event.target.closest('.cinema-panel,input[type="range"]')) return;
+      if (event.cancelable) event.preventDefault();
+    };
+    const preventEdgeSwipe = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      if (event.target instanceof Element && event.target.closest('a,button,input,select,.cinema-panel')) return;
+      const x = event.touches[0].clientX;
+      if (x <= 24 || x >= innerWidth - 24) preventPageSwipe(event);
+    };
+    root?.addEventListener('touchmove', preventPageSwipe, { passive: false });
+    root?.addEventListener('touchstart', preventEdgeSwipe, { passive: false });
+    return () => {
+      root?.removeEventListener('touchmove', preventPageSwipe);
+      root?.removeEventListener('touchstart', preventEdgeSwipe);
+    };
+  }, []);
   useEffect(() => () => { if (localUrl.current) URL.revokeObjectURL(localUrl.current); }, []);
   useEffect(() => {
     if (localSource || downloaded || downloadsLoading || availability.loading || !playable) { setLoading(false); return; }

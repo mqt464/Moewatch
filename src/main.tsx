@@ -1,3 +1,5 @@
+import { keyboardInput, usePresence } from './motion';
+import { SeriesFacts } from './SeriesFacts';
 import './pwa';
 import { connectSharedStorage } from './sharedStorage';
 import { checkDesktopUpdates } from './settings/DesktopUpdates';
@@ -25,6 +27,7 @@ import { WatchpartyProvider } from './playback/Watchparty';
 import { availableEpisodes, useAvailability } from './playback/availability';
 import { DownloadsProvider, useDownloads } from './downloads/DownloadsContext';
 import { DownloadButton, DownloadsPopover } from './downloads/Downloads';
+import './motion.css';
 
 type LibraryContextValue = { library: Library; toggle: (anime: Anime) => void; update: (progress: Progress) => void };
 const LibraryContext = React.createContext<LibraryContextValue>({ library: emptyLibrary, toggle: () => {}, update: () => {} });
@@ -95,6 +98,7 @@ function Poster({ anime, showYear = false, watching = false, progress }: { anime
 
 
 function Carousel({ title, href, count, wide = false, children }: { title: string; href?: string; count: number; wide?: boolean; children: React.ReactNode }) {
+  const { preferences } = usePreferences();
   const rail = useRef<HTMLDivElement>(null);
   const railId = useId();
   const [position, setPosition] = useState({ previous: false, next: false });
@@ -111,10 +115,10 @@ function Carousel({ title, href, count, wide = false, children }: { title: strin
     measure();
     return () => observer.disconnect();
   }, [count]);
-  function scroll(direction: number) {
+  function scroll(direction: number, source: 'keyboard' | 'pointer') {
     const element = rail.current;
     if (!element) return;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = source === 'keyboard' || preferences.reduceMotion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     element.scrollBy({ left: direction * element.clientWidth * 0.85, behavior: reduced ? 'instant' : 'smooth' });
   }
   return <section className="catalog-row" aria-label={title}>
@@ -123,14 +127,14 @@ function Carousel({ title, href, count, wide = false, children }: { title: strin
       <div className="carousel-actions">
         {href && <Link className="text-link" to={href}>View all</Link>}
         {(position.previous || position.next) && <div className="carousel-controls">
-          <button className="icon-button" aria-label={'Previous ' + title} aria-controls={railId} disabled={!position.previous} onClick={() => scroll(-1)}><ChevronLeft aria-hidden="true" size={19} /></button>
-          <button className="icon-button" aria-label={'Next ' + title} aria-controls={railId} disabled={!position.next} onClick={() => scroll(1)}><ChevronRight aria-hidden="true" size={19} /></button>
+          <button className="icon-button" aria-label={'Previous ' + title} aria-controls={railId} disabled={!position.previous} onClick={() => scroll(-1, keyboardInput() ? 'keyboard' : 'pointer')}><ChevronLeft aria-hidden="true" size={19} /></button>
+          <button className="icon-button" aria-label={'Next ' + title} aria-controls={railId} disabled={!position.next} onClick={() => scroll(1, keyboardInput() ? 'keyboard' : 'pointer')}><ChevronRight aria-hidden="true" size={19} /></button>
         </div>}
       </div>
     </div>
     <ScrollArea ref={rail} id={railId} className={'carousel-rail' + (wide ? ' landscape-rail' : '')} tabIndex={0} role="group" aria-label={title + ' carousel'} onScroll={measure} onKeyDown={event => {
       if (event.target !== event.currentTarget) return;
-      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); scroll(event.key === 'ArrowRight' ? 1 : -1); }
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); scroll(event.key === 'ArrowRight' ? 1 : -1, 'keyboard'); }
     }}>{children}</ScrollArea>
   </section>;
 }
@@ -303,7 +307,7 @@ function SeriesContent({ anime }: { anime: Anime }) {
   const count = episodeNumbers.length;
   const episodeKey = episodeNumbers.join(',');
   useEffect(() => setEpisodePage(0), [anime.id, episodeKey]);
-  return <><section className="detail-hero" data-player-return={returningToSeries || undefined} style={heroFraming(anime.id)}><Artwork className="hero-art" src={anime.banner || anime.cover} eager /><Artwork className="detail-mobile-art" src={anime.cover} eager /><div className="hero-shade" /><div className="content-wrap detail-heading"><Link className="back-link" to="/browse"><ArrowLeft aria-hidden="true" size={17} />Search</Link><h1>{anime.title}</h1><HeroMetadata anime={anime} /><div className="hero-actions"><Link className="button primary" to={`/watch/${anime.id}/${progress?.episode || streamingEpisodes[0] || 1}`}><Play aria-hidden="true" size={17} fill="currentColor" />{progress ? `Resume episode ${progress.episode}` : `Watch episode ${streamingEpisodes[0] || 1}`}</Link><ListStatus anime={anime} /><DownloadButton anime={anime} /></div></div></section><div className="content-wrap detail-content"><button className="series-details-toggle" aria-expanded={detailsExpanded} aria-controls="series-facts" onClick={() => setDetailsExpanded(!detailsExpanded)}>Series details<ChevronRight aria-hidden="true" size={16} /></button><section id="series-facts" className={detailsExpanded ? "synopsis details-expanded" : "synopsis"}><div><p id="series-synopsis" className="synopsis-copy expanded">{!synopsisExpanded && anime.description.length > 240 ? anime.description.slice(0, 240).replace(/\s+\S*$/, '') + '\u2026' : anime.description || 'Synopsis unavailable.'}</p>{anime.description.length > 240 && <button className="synopsis-toggle" aria-expanded={synopsisExpanded} aria-controls="series-synopsis" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{synopsisExpanded ? 'Show less' : 'Show more'}</button>}</div><dl><div><dt>Genres</dt><dd className="genres-list" title={anime.genres.join(', ') || 'Unknown'}>{anime.genres.join(', ') || 'Unknown'}</dd></div><div><dt>Studio</dt><dd>{anime.studios.join(', ') || 'Not announced'}</dd></div><div><dt>Episode length</dt><dd>{anime.duration ? `${anime.duration} minutes` : 'Not announced'}</dd></div><div><dt>Status</dt><dd>{anime.status.replaceAll('_', ' ').toLowerCase()}</dd></div></dl></section><div className="detail-tabs" role="tablist" aria-label="Series information">{['Episodes', 'Characters', 'Related'].map(value => <button role="tab" key={value} id={`tab-${value}`} aria-selected={tab === value} aria-controls="series-panel" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs = ['Episodes', 'Characters', 'Related']; const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }} onClick={() => setTab(value)}>{value}{value === 'Episodes' && count ? <span>{count}</span> : null}</button>)}</div><section id="series-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="series-panel">{tab === 'Episodes' ? <><div className="episode-toolbar"><div className="episode-heading">{count && count > 24 ? <select aria-label="Episode range" value={episodePage} onChange={event => setEpisodePage(Number(event.target.value))}>{Array.from({ length: Math.ceil(count / 24) }, (_, index) => <option key={index} value={index}>Episodes {episodeNumbers[index * 24]}–{episodeNumbers[Math.min(count, (index + 1) * 24) - 1]}</option>)}</select> : <span>{count ? `${count} episodes` : 'Schedule not announced'}</span>}</div>{(availability.loading || streamingEpisodes.length > 0) && <p className="data-note" role="status">{availability.loading ? 'Checking streaming availability\u2026' : audioPending ? 'Audio availability will be checked when you choose an episode.' : 'Available episodes for your audio and provider preferences.'}</p>}</div>{count ? <div className="episodes-grid">{episodeNumbers.slice(episodePage * 24, (episodePage + 1) * 24).map(episode => {
+  return <><section className="detail-hero" data-player-return={returningToSeries || undefined} style={heroFraming(anime.id)}><Artwork className="hero-art" src={anime.banner || anime.cover} eager /><Artwork className="detail-mobile-art" src={anime.cover} eager /><div className="hero-shade" /><div className="content-wrap detail-heading"><Link className="back-link" to="/browse"><ArrowLeft aria-hidden="true" size={17} />Search</Link><h1>{anime.title}</h1><HeroMetadata anime={anime} /><div className="hero-actions"><Link className="button primary" to={`/watch/${anime.id}/${progress?.episode || streamingEpisodes[0] || 1}`}><Play aria-hidden="true" size={17} fill="currentColor" />{progress ? `Resume episode ${progress.episode}` : `Watch episode ${streamingEpisodes[0] || 1}`}</Link><ListStatus anime={anime} /><DownloadButton anime={anime} /></div></div></section><div className="content-wrap detail-content"><button className="series-details-toggle" aria-expanded={detailsExpanded} aria-controls="series-facts" onClick={() => setDetailsExpanded(!detailsExpanded)}>Series details<ChevronRight aria-hidden="true" size={16} /></button><SeriesFacts expanded={detailsExpanded} synopsisExpanded={synopsisExpanded}><div><p id="series-synopsis" className="synopsis-copy expanded">{!synopsisExpanded && anime.description.length > 240 ? anime.description.slice(0, 240).replace(/\s+\S*$/, '') + '\u2026' : anime.description || 'Synopsis unavailable.'}</p>{anime.description.length > 240 && <button className="synopsis-toggle" aria-expanded={synopsisExpanded} aria-controls="series-synopsis" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{synopsisExpanded ? 'Show less' : 'Show more'}</button>}</div><dl><div><dt>Genres</dt><dd className="genres-list" title={anime.genres.join(', ') || 'Unknown'}>{anime.genres.join(', ') || 'Unknown'}</dd></div><div><dt>Studio</dt><dd>{anime.studios.join(', ') || 'Not announced'}</dd></div><div><dt>Episode length</dt><dd>{anime.duration ? `${anime.duration} minutes` : 'Not announced'}</dd></div><div><dt>Status</dt><dd>{anime.status.replaceAll('_', ' ').toLowerCase()}</dd></div></dl></SeriesFacts><div className="detail-tabs" role="tablist" aria-label="Series information">{['Episodes', 'Characters', 'Related'].map(value => <button role="tab" key={value} id={`tab-${value}`} aria-selected={tab === value} aria-controls="series-panel" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs = ['Episodes', 'Characters', 'Related']; const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }} onClick={() => setTab(value)}>{value}{value === 'Episodes' && count ? <span>{count}</span> : null}</button>)}</div><section id="series-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="series-panel">{tab === 'Episodes' ? <><div className="episode-toolbar"><div className="episode-heading">{count && count > 24 ? <select aria-label="Episode range" value={episodePage} onChange={event => setEpisodePage(Number(event.target.value))}>{Array.from({ length: Math.ceil(count / 24) }, (_, index) => <option key={index} value={index}>Episodes {episodeNumbers[index * 24]}–{episodeNumbers[Math.min(count, (index + 1) * 24) - 1]}</option>)}</select> : <span>{count ? `${count} episodes` : 'Schedule not announced'}</span>}</div>{(availability.loading || streamingEpisodes.length > 0) && <p className="data-note" role="status">{availability.loading ? 'Checking streaming availability\u2026' : audioPending ? 'Audio availability will be checked when you choose an episode.' : 'Available episodes for your audio and provider preferences.'}</p>}</div>{count ? <div className="episodes-grid">{episodeNumbers.slice(episodePage * 24, (episodePage + 1) * 24).map(episode => {
   const artwork = anime.episodeArtwork?.find(item => item.number === episode);
   const current = progress?.episode === episode;
   return <Link to={'/watch/' + anime.id + '/' + episode} className={'episode-row' + (current ? ' is-current' : '')} key={episode}>
@@ -350,10 +354,18 @@ function App() {
   const { preferences } = usePreferences();
   const { user, library, toggle, update, storageError } = useAccount();
   const [removed, setRemoved] = useState<Anime | null>(null);
-  useEffect(() => setRemoved(null), [user?.id]);
+  const { mounted: toastMounted, ...toastPresence } = usePresence(Boolean(removed), false);
+  const previousLibrary = useRef({ userId: user?.id, saved: library.saved });
+  useEffect(() => {
+    const previous = previousLibrary.current;
+    previousLibrary.current = { userId: user?.id, saved: library.saved };
+    if (previous.userId !== user?.id) { setRemoved(null); return; }
+    const removal = previous.saved.find(anime => !library.saved.some(item => item.id === anime.id));
+    if (removal) setRemoved(removal);
+  }, [library.saved, user?.id]);
   const location = useLocation();
   useLayoutEffect(() => { window.scrollTo({ top: 0 }); const main = document.getElementById('main'); main?.focus({ preventScroll: true }); document.title = `${location.pathname.startsWith('/settings') ? 'Settings' : location.pathname === '/list' ? 'My List' : location.pathname === '/browse' ? 'Search' : 'Discover'} — Moewatch`; }, [location.pathname]);
-  return <SkulletProvider mode="dark" theme={{ dark: { base: '#211b21', highlight: '#3b2d37' }, animation: preferences.reduceMotion ? 'none' : 'shimmer' }} reveal={{ hold: 0, duration: preferences.reduceMotion ? 0 : 160 }}><LibraryContext.Provider value={{ library, toggle: anime => { setRemoved(library.saved.some(item => item.id === anime.id) ? anime : null); toggle(anime); }, update }}>{!location.pathname.startsWith('/watch/') && <Header />}<main id="main" className={location.pathname.startsWith('/watch/') ? 'watch-main' : undefined} tabIndex={-1}><div className="page-scene" key={location.pathname}><Outlet /></div><DocumentScrollbar /></main>{storageError && <div className="storage-warning" role="status">Browser storage is unavailable. Your list and history won’t survive a refresh.</div>}{removed && <div className="undo-toast" role="status"><span>Removed from My List</span><button onClick={() => { if (!library.saved.some(item => item.id === removed.id)) toggle(removed); setRemoved(null); }}>Undo</button><button className="icon-button" aria-label="Dismiss notification" onClick={() => setRemoved(null)}><X aria-hidden="true" size={16} /></button></div>}</LibraryContext.Provider></SkulletProvider>;
+  return <SkulletProvider mode="dark" theme={{ dark: { base: '#211b21', highlight: '#3b2d37' }, animation: preferences.reduceMotion ? 'none' : 'shimmer' }} reveal={{ hold: 0, duration: preferences.reduceMotion ? 0 : 160 }}><LibraryContext.Provider value={{ library, toggle: anime => { setRemoved(library.saved.some(item => item.id === anime.id) ? anime : null); toggle(anime); }, update }}>{!location.pathname.startsWith('/watch/') && <Header />}<main id="main" className={location.pathname.startsWith('/watch/') ? 'watch-main' : undefined} tabIndex={-1}><div className="page-scene" key={location.pathname}><Outlet /></div>{!location.pathname.startsWith('/watch/') && <DocumentScrollbar />}</main>{storageError && <div className="storage-warning" role="status">Browser storage is unavailable. Your list and history won’t survive a refresh.</div>}{toastMounted && <div {...toastPresence} className="undo-toast" role="status"><span>Removed from My List</span><button onClick={() => { if (removed && !library.saved.some(item => item.id === removed.id)) toggle(removed); setRemoved(null); }}>Undo</button><button className="icon-button" aria-label="Dismiss notification" onClick={() => setRemoved(null)}><X aria-hidden="true" size={16} /></button></div>}</LibraryContext.Provider></SkulletProvider>;
 }
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { failed: boolean }> {

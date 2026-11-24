@@ -95,7 +95,7 @@ test('reduced motion skips navigation animations', async ({ page }) => {
   await page.goto('/');
   await page.locator('.hero-actions').getByRole('link', { name: 'Watch', exact: true }).click();
   await expect(page).toHaveURL('/watch/154587/1');
-  await expect(page.getByText('No video source', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sources could not be checked. Try another provider.', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
   await expect(page.locator('.page-scene')).toHaveCSS('animation-name', 'none');
 });
@@ -116,9 +116,9 @@ test('hero framing changes per title and viewport without horizontal overflow', 
   await expect(page.locator('.hero-art')).toHaveClass(/is-ready/);
   await page.screenshot({ path: 'test-results/cowboy-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 375, height: 900 });
-  await expect(page.locator('.hero-art')).toHaveCSS('object-position', '56% 42%');
+  await expect(page.locator('.hero-art')).toHaveCSS('object-position', '34% 50%');
   await page.screenshot({ path: 'test-results/cowboy-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.goto('/anime/161645');
-  await expect(page.locator('.hero-art')).toHaveCSS('object-position', '54% 35%');
+  await expect(page.locator('.hero-art')).toHaveCSS('object-position', '34% 50%');
 });

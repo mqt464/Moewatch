@@ -1,3 +1,4 @@
+import { usePresence } from '../motion';
 ﻿import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { CircleCheck, Download } from 'lucide-react';
@@ -44,6 +45,7 @@ export function DownloadButton({ anime }: { anime: Anime }) {
 export function DownloadsPopover() {
   const { data, error } = useDownloads();
   const [open, setOpen] = useState(false);
+  const { mounted, ...presence } = usePresence(open);
   const container = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   const id = useId();
   const location = useLocation();
@@ -62,7 +64,7 @@ export function DownloadsPopover() {
     <button ref={trigger} type="button" className="downloads-trigger" aria-label={active.length ? `Downloads, ${Math.floor(progress * 100)}% complete` : 'Downloads'} aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog" onClick={() => setOpen(value => !value)}>
       {active.length > 0 && <svg className="downloads-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" /><circle cx="20" cy="20" r="17" pathLength="100" strokeDasharray={`${Math.max(2, progress * 100)} 100`} /></svg>}<Download size={19} strokeWidth={1.6} aria-hidden="true" />
     </button>
-    {open && <div className="downloads-popover" ref={panel} id={id} role="dialog" aria-label="Downloads" tabIndex={-1}>
+    {mounted && <div {...presence} className="downloads-popover motion-popover" ref={panel} id={id} role="dialog" aria-label="Downloads" tabIndex={-1}>
       <div className="downloads-list">{data.downloads.map(job => {
         const complete = job.episodes.filter(episode => episode.status === 'complete').length;
         const failed = job.episodes.filter(episode => episode.status === 'failed');
