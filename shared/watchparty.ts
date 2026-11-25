@@ -1,5 +1,5 @@
 export type PartyMember = { id: string; name: string; avatar: string };
-export type PartyAction = 'play' | 'pause' | 'seek' | 'episode' | 'sync';
+export type PartyAction = 'play' | 'pause' | 'seek' | 'episode' | 'sync' | 'ready';
 export type PartyPlayback = {
   animeId: number;
   episode: number;
@@ -8,8 +8,9 @@ export type PartyPlayback = {
   rate: number;
   at: number;
 };
-export type PartyUpdate = PartyPlayback & { action: PartyAction; clock: number; sender: string };
+export type PartyUpdate = PartyPlayback & { action: PartyAction; clock: number; sender: string; transition?: string };
 export type PartyStatus = {
+  loading?: { id: string; animeId: number; episode: number; ready: string[] };
   enabled: boolean;
   active: boolean;
   destination: { animeId: number; episode: number } | null;
@@ -36,7 +37,8 @@ export function isPartyPlayback(value: unknown): value is PartyPlayback {
 export function isPartyUpdate(value: unknown): value is PartyUpdate {
   if (!isPartyPlayback(value)) return false;
   const p = value as PartyUpdate;
-  return ['play', 'pause', 'seek', 'episode', 'sync'].includes(p.action)
+  return ['play', 'pause', 'seek', 'episode', 'sync', 'ready'].includes(p.action)
+    && (p.transition === undefined || typeof p.transition === 'string' && /^\d+:\d{1,20}$/.test(p.transition))
     && Number.isSafeInteger(p.clock) && p.clock > 0
     && typeof p.sender === 'string' && /^\d{1,20}$/.test(p.sender);
 }

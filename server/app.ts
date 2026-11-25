@@ -260,6 +260,7 @@ export function createApiHandler(options: AppOptions = {}) {
           const body = await readJson(request);
           if (route === 'discord/party/playback') { await party.advertise(body); return send(response, 200, { ok: true }); }
           if (route === 'discord/party/action') { party.action(body); return send(response, 200, { ok: true }); }
+          if (route === 'discord/party/ready') { party.ready(body); return send(response, 200, { ok: true }); }
           if (route === 'discord/party/leave') { await party.leave(); return send(response, 200, { ok: true }); }
         }
         throw new ApiError('NOT_FOUND', 'Route not found', 404);
@@ -333,6 +334,20 @@ export function createApiHandler(options: AppOptions = {}) {
         }
         return send(response, 200, { accepted: discord.update(update, anime, user) });
       }
+      const discussions = /^discussions\/(\d+)$/.exec(route);
+      if (discussions && method === 'GET') {
+        const id = positive(discussions[1]), page = positive(url.searchParams.get('page') || '1');
+        const thread = url.searchParams.get('thread');
+        const fields = 'id title body(asHtml: false) replyCount likeCount isLiked isLocked createdAt user { name avatar { large } }';
+        const query = thread
+          ? 'query ($id: Int!, $page: Int!) { Page(page: $page, perPage: 20) { pageInfo { hasNextPage } threadComments(threadId: $id, sort: ID) { id comment(asHtml: false) likeCount isLiked createdAt user { name avatar { large } } childComments } } }'
+          : 'query ($id: Int!, $page: Int!, $sort: [ThreadSort]) { Page(page: $page, perPage: 20) { pageInfo { hasNextPage } threads(mediaCategoryId: $id, sort: $sort) { ' + fields + ' } } }';
+        return send(response, 200, await account.discussionQuery(request, query, { id: thread ? positive(thread) : id, page, sort: url.searchParams.get('sort') === 'new' ? ['CREATED_AT_DESC'] : ['REPLIED_AT_DESC'] }, controller.signal));
+      }
+      if (route === 'discussions/like' && method === 'POST') {
+        if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected application/json', 415);
+        return send(response, 200, await account.likeDiscussion(request, await readJson(request), controller.signal));
+      }
       if (route.startsWith('account')) {
         const callbackUrl = new URL('/api/v1/account/callback', process.env.MOEWATCH_PUBLIC_ORIGIN || authority.origin).toString();
         if (method === 'GET' && route === 'account') return send(response, 200, await account.status(request));
@@ -352,9 +367,23 @@ export function createApiHandler(options: AppOptions = {}) {
         if (method === 'GET' && route === 'account/callback') return account.callback(request, response, url.searchParams.get('code'), url.searchParams.get('state'), callbackUrl, controller.signal);
         if (method === 'POST' && route === 'account/logout') { account.logout(request, response); return send(response, 200, { ok: true }); }
         if (method === 'GET' && route === 'account/list') return send(response, 200, { entries: await account.list(request, controller.signal) });
+        if (method === 'GET' && route === 'account/recommendations') {
+          const raw = url.searchParams.get('seeds') || '';
+          const seeds = raw ? raw.split(',').map(positive) : [];
+          if (seeds.length > 10 || seeds.some(id => id > 2147483647)) throw new ApiError('INVALID_REQUEST', 'Expected at most 10 anime IDs', 400);
+          return send(response, 200, { anime: await account.recommendations(request, seeds, controller.signal) });
+        }
         if (method === 'PUT' && route === 'account/list') {
           if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected application/json', 415);
           return send(response, 200, { entry: await account.upsert(request, await readJson(request), controller.signal) });
+        }
+        const favourite = /^account\/favourites\/(\d+)$/.exec(route);
+        if (favourite && method === 'GET') return send(response, 200, await account.favourite(request, positive(favourite[1]), controller.signal));
+        if (favourite && method === 'PUT') {
+          if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected application/json', 415);
+          const body = await readJson(request);
+          if (!body || typeof body !== 'object' || !('isFavourite' in body) || typeof body.isFavourite !== 'boolean') throw new ApiError('INVALID_REQUEST', 'Expected a favourite boolean', 400);
+          return send(response, 200, await account.favourite(request, positive(favourite[1]), controller.signal, body.isFavourite));
         }
         const entry = /^account\/list\/(\d+)$/.exec(route);
         if (method === 'DELETE' && entry) { await account.remove(request, positive(entry[1]), controller.signal); return send(response, 200, { ok: true }); }

@@ -20,6 +20,55 @@ function fixture() {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+test('episode transitions wait for every member, ignore stale readiness and release once', async () => {
+  const listeners = new Map<string, (event: DiscordPartyEvent) => void>();
+  const sent: PartyUpdate[] = [];
+  const make = (id: string): DiscordPartyTransport => ({
+    subscribe(listener) { listeners.set(id, listener); return () => listeners.delete(id); },
+    async advertise() {}, async leave() {}, close() {},
+    async send(update) { sent.push(update); for (const listener of listeners.values()) listener({ type: 'message', room: 'room', sender: id, data: update }); },
+  });
+  const host = createWatchparty(make('10'));
+  const guest = createWatchparty(make('20'));
+  for (const [self, listener] of listeners) listener({ type: 'members', room: 'room', self, members: [member('10'), member('20')] });
+  host.action({ ...playback, episode: 2, action: 'episode' });
+  await settle();
+  const transition = host.status().loading!.id;
+  assert.equal(guest.status().playback?.paused, true);
+  host.ready(transition);
+  guest.ready('1:999');
+  host.action({ ...playback, action: 'play' });
+  await settle();
+  assert.deepEqual(host.status().loading?.ready, ['10']);
+  assert.equal(guest.status().playback?.paused, true);
+  guest.ready(transition);
+  guest.ready(transition);
+  await settle(); await settle();
+  assert.equal(host.status().loading, undefined);
+  assert.equal(guest.status().loading, undefined);
+  assert.equal(guest.status().playback?.paused, false);
+  assert.equal(sent.filter(update => update.action === 'play').length, 1);
+  host.action({ ...playback, episode: 3, action: 'episode' });
+  await settle();
+  guest.ready(transition);
+  assert.deepEqual(guest.status().loading?.ready, []);
+  host.close(); guest.close();
+});
+
+test('a departing unready member no longer blocks the remaining ready member', async () => {
+  const f = fixture();
+  f.event({ type: 'members', room: 'room', self: '10', members: [member('10'), member('20')] });
+  f.party.action({ ...playback, episode: 2, action: 'episode' });
+  f.party.ready(f.party.status().loading!.id);
+  await settle();
+  assert(f.party.status().loading);
+  f.event({ type: 'members', room: 'room', self: '10', members: [member('10')] });
+  await settle();
+  assert.equal(f.party.status().loading, undefined);
+  assert.equal(f.sent.at(-1)?.action, 'play');
+  f.party.close();
+});
+
 test('a full party reports its ten-person limit through the existing player error', () => {
   const f = fixture();
   f.event({ type: 'full' });
@@ -178,4 +227,31 @@ test('two clients share controls in either direction without feedback or shared 
   assert.equal('audio' in sent[0], false);
   assert.equal('volume' in sent[1], false);
   host.close(); guest.close();
+});
+
+test('a guest joining during loading receives the active barrier and existing readiness', async () => {
+  const listeners = new Map<string, (event: DiscordPartyEvent) => void>();
+  const make = (id: string): DiscordPartyTransport => ({
+    subscribe(listener) { listeners.set(id, listener); return () => listeners.delete(id); },
+    async advertise() {}, async leave() {}, close() {},
+    async send(update) { for (const listener of listeners.values()) listener({ type: 'message', room: 'room', sender: id, data: update }); },
+  });
+  const host = createWatchparty(make('10'));
+  const guest = createWatchparty(make('20'));
+  for (const [self, listener] of listeners) listener({ type: 'members', room: 'room', self, members: [member('10'), member('20')] });
+  host.action({ ...playback, episode: 2, action: 'episode' });
+  await settle();
+  host.ready(host.status().loading!.id);
+  await settle();
+  const newcomer = createWatchparty(make('30'));
+  for (const [self, listener] of [...listeners].reverse()) listener({ type: 'members', room: 'room', self, members: [member('10'), member('20'), member('30')] });
+  await settle(); await settle();
+  const id = host.status().loading!.id;
+  assert.equal(newcomer.status().loading?.id, id);
+  assert(newcomer.status().loading?.ready.includes('10'));
+  guest.ready(id); newcomer.ready(id);
+  await settle(); await settle();
+  assert.equal(newcomer.status().loading, undefined);
+  assert.equal(newcomer.status().playback?.paused, false);
+  host.close(); guest.close(); newcomer.close();
 });

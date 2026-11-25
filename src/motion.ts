@@ -1,8 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 let keyboard = true;
 document.addEventListener('keydown', () => { keyboard = true; document.documentElement.dataset.input = "keyboard"; }, true);
 document.addEventListener('pointerdown', () => { keyboard = false; document.documentElement.dataset.input = "pointer"; }, true);
 export const keyboardInput = () => keyboard;
+const subscribeInput = (notify: () => void) => {
+ document.addEventListener('keydown', notify);
+ document.addEventListener('pointerdown', notify);
+ return () => { document.removeEventListener('keydown', notify); document.removeEventListener('pointerdown', notify); };
+};
+export const useKeyboardInput = () => useSyncExternalStore(subscribeInput, keyboardInput);
 export function usePresence(open: boolean, immediate = keyboardInput()) {
  const [retained, setRetained] = useState(open);
  useEffect(() => {

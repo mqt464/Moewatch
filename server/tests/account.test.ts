@@ -44,13 +44,34 @@ test('OAuth callback permits cross-site navigation, binds state to cookie and st
   const state = location.searchParams.get('state')!;
   const stateCookie = login.headers.get('set-cookie')!.split(';')[0];
   let exchanges = 0;
+  let liked = false;
+  let favourite = false;
+  let favouriteToggles = 0;
+  let graphReads = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === 'https://anilist.co/api/v2/oauth/token') { exchanges++; const body = JSON.parse(String(init?.body)); assert.equal(body.redirect_uri, `${root}/callback`); return Response.json({ access_token: 'private-token', expires_in: 3600 }); }
     if (url === 'https://graphql.anilist.co') {
+      graphReads++;
       assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer private-token');
       const body = JSON.parse(String(init?.body));
+      if (body.query.includes('favourites { anime')) return Response.json({ data: { Viewer: { favourites: { anime: { nodes: [{ id: 10 }] } } } } });
+      if (body.query.includes('recommendations(perPage:')) {
+        const rec = (id: number, rating: number, isAdult = false) => ({ rating, mediaRecommendation: { id, type: 'ANIME', isAdult, title: { romaji: `Anime ${id}` } } });
+        return Response.json({ data: {
+          seed10: { recommendations: { nodes: [rec(20, 10), rec(21, 20), rec(10, 99), rec(22, 99, true), rec(23, -1)] } },
+          seed11: { recommendations: { nodes: [rec(20, 10)] } },
+        } });
+      }
       if (body.query.includes('Viewer')) return Response.json({ data: { Viewer: { id: 55, name: 'Viewer', avatar: { large: 'https://example.org/avatar.png' } } } });
+      if (body.query.includes('ToggleLikeV2')) {
+        assert.ok(['THREAD', 'THREAD_COMMENT'].includes(body.variables.type));
+        assert.equal(body.variables.id, 123);
+        liked = !liked;
+        return Response.json({ data: { ToggleLikeV2: { isLiked: liked, likeCount: liked ? 4 : 3 } } });
+      }
+      if (body.query.includes('ToggleFavourite')) { favourite = !favourite; favouriteToggles++; return Response.json({ data: { ToggleFavourite: { __typename: 'Favourites' } } }); }
+      if (body.query.includes('isFavourite')) return Response.json({ data: { Media: { isFavourite: favourite, isFavouriteBlocked: false } } });
       if (body.query.includes('SaveMediaListEntry')) return Response.json({ data: { SaveMediaListEntry: { id: 1, mediaId: 10, status: 'CURRENT', progress: 2, updatedAt: 100, media: { id: 10, title: { romaji: 'Title' }, coverImage: {}, startDate: {} } } } });
       if (body.query.includes('DeleteMediaListEntry')) return Response.json({ data: { DeleteMediaListEntry: { deleted: true } } });
       if (body.variables.mediaId === 11) return Response.json({ errors: [{ message: 'Not Found.', status: 404 }] }, { status: 404 });
@@ -73,6 +94,18 @@ test('OAuth callback permits cross-site navigation, binds state to cookie and st
     assert.equal(readFileSync(process.env.MOEWATCH_SESSION_FILE!, 'utf8').includes('private-token'), false);
     const account = await (await originalFetch(root, { headers: auth })).json();
     assert.equal(account.user.avatar, 'https://example.org/avatar.png');
+    const likeUrl = root.replace(/account$/, 'discussions/like');
+    for (const type of ['THREAD', 'THREAD_COMMENT']) {
+      for (const expected of [true, false]) {
+        const result = await originalFetch(likeUrl, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', 'X-Moewatch-Account': '55' }, body: JSON.stringify({ id: 123, type }) });
+        assert.equal(result.status, 200);
+        assert.deepEqual(await result.json(), { isLiked: expected, likeCount: expected ? 4 : 3 });
+      }
+    }
+    const invalidLike = await originalFetch(likeUrl, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', 'X-Moewatch-Account': '55' }, body: JSON.stringify({ id: 123, type: 'ACTIVITY' }) });
+    assert.equal(invalidLike.status, 400);
+    const wrongLikeAccount = await originalFetch(likeUrl, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', 'X-Moewatch-Account': '99' }, body: JSON.stringify({ id: 123, type: 'THREAD' }) });
+    assert.equal(wrongLikeAccount.status, 409);
     const restarted = createServer({ providers: [], catalog: { async search() { return []; }, async anime() { return null; } } });
     await new Promise<void>(resolve => restarted.listen(0, '127.0.0.1', resolve));
     const restartedRoot = `http://127.0.0.1:${(restarted.address() as AddressInfo).port}/api/v1/account`;
@@ -87,6 +120,26 @@ test('OAuth callback permits cross-site navigation, binds state to cookie and st
     const wrongAccount = await originalFetch(`${root}/list`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json', 'x-moewatch-account': '99' }, body: JSON.stringify({ mediaId: 10, progress: 2, status: 'CURRENT' }) });
     assert.equal(wrongAccount.status, 409);
     const headers = { ...auth, 'content-type': 'application/json', 'x-moewatch-account': '55' };
+    const recommendations = await originalFetch(`${root}/recommendations?seeds=11`, { headers });
+    assert.equal(recommendations.status, 200);
+    assert.deepEqual((await recommendations.json()).anime.map((anime: { id: number }) => anime.id), [20, 21]);
+    const cachedReads = graphReads;
+    const repeated = await Promise.all(Array.from({ length: 4 }, () => originalFetch(`${root}/recommendations?seeds=11`, { headers })));
+    assert.ok(repeated.every(response => response.status === 200));
+    assert.equal(graphReads, cachedReads, 'homepage remounts must reuse cached AniList recommendations');
+    assert.equal((await originalFetch(`${root}/recommendations?seeds=bad`, { headers })).status, 400);
+    assert.equal((await originalFetch(`${root}/recommendations?seeds=11`)).status, 401);
+    const favouriteUrl = root + '/favourites/10';
+    assert.equal((await originalFetch(favouriteUrl)).status, 401);
+    assert.equal((await originalFetch(favouriteUrl, { headers: { ...headers, 'x-moewatch-account': '99' } })).status, 409);
+    assert.equal((await (await originalFetch(favouriteUrl, { headers })).json()).isFavourite, false);
+    for (const isFavourite of [true, true, false]) {
+      const response = await originalFetch(favouriteUrl, { method: 'PUT', headers, body: JSON.stringify({ isFavourite }) });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).isFavourite, isFavourite);
+    }
+    assert.equal(favouriteToggles, 2, 'retrying a desired state must not toggle it off');
+    assert.equal((await originalFetch(favouriteUrl, { method: 'PUT', headers, body: JSON.stringify({ isFavourite: 'yes' }) })).status, 400);
     const invalid = await originalFetch(`${root}/list`, { method: 'PUT', headers, body: JSON.stringify({ mediaId: 10, progress: null, status: 'CURRENT' }) });
     assert.equal(invalid.status, 400);
     const saved = await originalFetch(`${root}/list`, { method: 'PUT', headers, body: JSON.stringify({ mediaId: 10, progress: 2, status: 'CURRENT' }) });

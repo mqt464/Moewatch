@@ -128,3 +128,21 @@ test('media pools reuse sockets for the same DNS pin and separate different pins
     assert.equal(pools.http.maxFreeSockets, 4);
   } finally { pools.http.destroy(); pools.https.destroy(); server.closeAllConnections(); server.close(); }
 });
+
+test('a provider timeout retries its segment without restarting completed segments', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'moewatch-timeout-'));
+  const calls = new Map<string, number>();
+  const read: DownloadReader = async url => {
+    const attempt = (calls.get(url) || 0) + 1;
+    calls.set(url, attempt);
+    if (url === 'master') return { type: 'application/vnd.apple.mpegurl', length: 0, body: body(playlist(8)) };
+    if (url === 'segment-5' && attempt === 1) throw new DOMException('Provider request timed out', 'TimeoutError');
+    return { type: 'application/octet-stream', length: 16, body: body('1234567890123456') };
+  };
+  try {
+    const saved = await saveMedia({ url: 'master', directory, read, quality: 720, signal: new AbortController().signal });
+    assert.equal(calls.get('segment-5'), 2);
+    for (let index = 0; index < 8; index++) if (index !== 5) assert.equal(calls.get(`segment-${index}`), 1);
+    assert.equal(saved.files.length, 10);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

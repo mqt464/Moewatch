@@ -1,3 +1,4 @@
+import { anilist } from '../infrastructure/anilist';
 import { normalizeAnime, type Anime } from '../../src/catalog';
 import { TtlCache } from '../infrastructure/cache';
 import { ApiError } from '../infrastructure/errors';
@@ -8,10 +9,7 @@ const selection = `id isAdult title { english romaji native } description coverI
   relations { edges { relationType node { id type isAdult title { english romaji } coverImage { large } } } }`;
 
 async function query(document: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<Anime[]> {
-  const response = await fetch('https://graphql.anilist.co', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ query: document, variables }), signal: AbortSignal.any([signal, AbortSignal.timeout(12000)]),
-  });
+  const response = await anilist.request(document, variables, { signal, ttlMs: 5 * 60_000 });
   if (!response.ok) throw new ApiError(response.status === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR', `AniList HTTP ${response.status}`, response.status === 429 ? 429 : 502);
   const body = await response.json();
   if (body.errors?.length || !body.data) throw new ApiError('UPSTREAM_ERROR', 'AniList could not complete the request');

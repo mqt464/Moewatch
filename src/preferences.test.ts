@@ -27,6 +27,16 @@ test('subtitle preferences migrate and reject invalid values', () => {
   assert.equal(readPreferences('{"subtitles":"true"}').subtitles, false);
 });
 
+test('Discord preferences preserve independent toggles and reject invalid values', () => {
+  for (const discordRpc of [true, false]) {
+    for (const discordWatchParty of [true, false]) {
+      const preferences = { ...defaultPreferences, discordRpc, discordWatchParty };
+      assert.deepEqual(readPreferences(JSON.stringify(preferences)), preferences);
+    }
+  }
+  assert.deepEqual(readPreferences('{"discordRpc":"false","discordWatchParty":0}'), defaultPreferences);
+});
+
 test('volume preferences validate range and preserve silence', () => {
   for (const volume of [0, 0.35, 1]) assert.equal(readPreferences(JSON.stringify({volume})).volume, volume);
   for (const volume of [-1, 2, '0.5', null]) assert.equal(readPreferences(JSON.stringify({volume})).volume, 1);

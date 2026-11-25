@@ -36,8 +36,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     try { const value = next ? readAccount(localStorage.getItem(key(next.id))) : { ...freshAccount(), library: readLibrary(localStorage.getItem(guestKey)) }; current.current = value; setState(value); }
     catch { current.current = freshAccount(); setState(current.current); setStorageError(true); }
   }
-  async function sync() {
+  const lastAutomaticAttempt = useRef(0);
+  async function sync(manual = true) {
     if (busy.current || stopping.current) return;
+    if (!manual && !Object.keys(current.current.pending).length && Date.now() - lastAutomaticAttempt.current < 3 * 60_000) return;
+    lastAutomaticAttempt.current = Date.now();
     busy.current = true; setSyncing(true);
     const run = generation.current;
     try {
@@ -50,7 +53,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       if (!status.user) { setError(''); return; }
       const account = status.user.id; const epoch = generation.current;
       const valid = () => epoch === generation.current && !stopping.current;
-      const headers = { 'Content-Type': 'application/json', 'X-Moewatch-Account': String(account) };
+      const headers = { 'Content-Type': 'application/json', 'X-Moewatch-Account': String(account), 'X-Moewatch-Refresh': manual || Object.keys(current.current.pending).length ? '1' : '0' };
+      let wrote = false;
       const result = await apiRequest<{ entries: AccountEntry[] }>('/account/list', { headers });
       if (!valid()) return;
       save(mergeRemote(current.current, result.entries));
@@ -60,23 +64,23 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         // Newer edits made on AniList win; unsent local edits remain durable on failures.
         if (!remote || remote.updatedAt * 1000 <= pending.edited) {
           if (pending.deleted) {
-            if (remote) await apiRequest(`/account/list/${pending.mediaId}`, { method: 'DELETE', headers });
-          } else await apiRequest('/account/list', { method: 'PUT', headers, body: JSON.stringify(pending) });
+            if (remote) { await apiRequest(`/account/list/${pending.mediaId}`, { method: 'DELETE', headers }); wrote = true; }
+          } else { await apiRequest('/account/list', { method: 'PUT', headers, body: JSON.stringify(pending) }); wrote = true; }
         }
         if (!valid()) return;
         if (current.current.pending[pending.mediaId]?.edited === pending.edited) {
           const next = { ...current.current, pending: { ...current.current.pending } }; delete next.pending[pending.mediaId]; save(next);
         }
       }
-      const final = await apiRequest<{ entries: AccountEntry[] }>('/account/list', { headers });
+      const final = wrote ? await apiRequest<{ entries: AccountEntry[] }>('/account/list', { headers: { ...headers, 'X-Moewatch-Refresh': '0' } }) : result;
       if (valid()) { save({ ...mergeRemote(current.current, final.entries), lastSynced: Date.now() }); setError(''); }
     } catch (e) { if (!stopping.current) setError(message(e)); }
     finally { busy.current = false; setSyncing(false); setLoading(false); }
   }
   const syncRef = useRef(sync); syncRef.current = sync;
   useEffect(() => {
-    void syncRef.current();
-    const refresh = () => { if (document.visibilityState === 'visible') void syncRef.current(); };
+    void syncRef.current(false);
+    const refresh = () => { if (document.visibilityState === 'visible') void syncRef.current(false); };
     const storage = (event: StorageEvent) => {
       const activeKey = owner.current ? key(owner.current.id) : guestKey;
       if (event.key !== activeKey || !event.newValue) return;
@@ -91,7 +95,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     if (!user || !Object.keys(state.pending).length) return;
-    const timer = window.setTimeout(() => void syncRef.current(), 1500);
+    const timer = window.setTimeout(() => void syncRef.current(false), 1500);
     return () => window.clearTimeout(timer);
   }, [state.pending, user]);
   async function logout() {

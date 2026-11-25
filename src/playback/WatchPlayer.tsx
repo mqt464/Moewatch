@@ -13,7 +13,7 @@ import { canResume, Player, togglePlayback } from './Player';
 import './playback.css';
 import { useDiscordPresence } from './discord';
 import { useDownloads } from '../downloads/DownloadsContext';
-import { PartyAvatars, usePartyPlayer } from './Watchparty';
+import { PartyAvatars, PartyReadiness, usePartyPlayer } from './Watchparty';
 
 const noTracks: SubtitleTrack[] = [];
 
@@ -50,6 +50,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const localEpisodes = anime.episodes ? Array.from({ length: Math.min(anime.episodes, 100000) }, (_, index) => index + 1) : [episode];
   const navigation = localSource || !episodes.length ? localEpisodes : episodes;
   const nextEpisode = navigation.find(number => number > episode);
+  const episodeThumbnail = typeof location.state?.episodeThumbnail === 'string' ? location.state.episodeThumbnail : anime.episodeArtwork?.find(entry => entry.number === episode)?.thumbnail;
   const nextArtwork = anime.episodeArtwork?.find(entry => entry.number === nextEpisode);
 
   useEffect(() => {
@@ -134,10 +135,10 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   return <div className="watch-content" aria-label="Episode player">
     <header className="cinema-header"><Link viewTransition={!window.matchMedia('(pointer: coarse)').matches && !preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
     <div className="player-shell">
-      <img className={`player-backdrop${(source && revealedSource === source.url) || playerError || (!source && !findingSource) ? ' is-revealed' : ''}`} src={anime.banner || anime.cover} alt="" aria-hidden="true" />
+      <img className={`player-backdrop${(source && revealedSource === source.url) || playerError || (!source && !findingSource) ? ' is-revealed' : ''}`} src={episodeThumbnail || anime.banner || anime.cover} onError={event => { const fallback = anime.banner || anime.cover; if (event.currentTarget.getAttribute('src') !== fallback) event.currentTarget.src = fallback; }} alt="" aria-hidden="true" />
       {source ? <Player key={source.url} source={source} videoRef={video} label={`${anime.title}, episode ${episode}`} onSave={save} onReady={loaded} onFirstFrame={() => setRevealedSource(source.url)} onBuffering={setBuffering} onClick={() => togglePlayback(video, reportError)} onError={reportError} /> : null}
       {(playerError || (!source && !findingSource)) && <div className="player-empty" role={playerError ? 'alert' : 'status'}><img className="source-mascot" src="/error-mascot.png" alt="" width="180" height="188" /><p className="source-status">{playerError || 'no source could be found...'}</p>{!localSource && availability.error && <button onClick={() => { setError(''); availability.retry(); }}>Retry source check</button>}</div>}
-      {((!source && findingSource) || (source && buffering && !error)) && <div className="player-loading" role="status" aria-label={source ? 'Loading video' : 'Finding video source'}><span className="buffer-spinner" /><span className="sr-only">{source ? 'Loading video' : 'Finding video source'}</span></div>}
+      {(!playerError && (party.waiting || (!source && findingSource) || (source && buffering && !error))) && <div className="player-loading" role="status" aria-label={source ? 'Loading video' : 'Finding video source'}><span className="buffer-spinner" />{party.waiting && <PartyReadiness members={party.status.members} ready={party.status.loading?.ready || []} />}<span className="sr-only">{source ? 'Loading video' : 'Finding video source'}</span></div>}
       <input hidden type="file" accept="video/*,.mkv" aria-label="Choose a local video" onChange={event => {
         const file = event.target.files?.[0];
         if (file) { if (party.status.room) party.leave(); party.advertise(null); video.current?.pause(); save(true); if (localUrl.current) URL.revokeObjectURL(localUrl.current); localUrl.current = URL.createObjectURL(file); setLocalSource(localUrl.current); setError(''); setBuffering(true); }

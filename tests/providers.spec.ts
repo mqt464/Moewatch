@@ -53,8 +53,9 @@ test('provider statuses stay unknown when configuration cannot be loaded', async
 test('series uses available episode numbers, not metadata episode count', async ({ page }) => {
   await fixture(page);
   await page.goto('/anime/154587');
-  await expect(page.getByText('Available episodes for your audio and provider preferences.')).toBeVisible();
   await expect(page.locator('.episode-row')).toHaveCount(2);
+  await expect(page.locator('.episode-toolbar')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Episode range' })).toHaveCount(0);
   await expect(page.locator('.episode-row').nth(1)).toHaveAttribute('href', '/watch/154587/3');
   await page.getByRole('link', { name: 'Watch episode 1' }).click();
   await page.getByRole('button', { name: 'Next episode' }).click();

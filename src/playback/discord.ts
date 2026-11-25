@@ -1,11 +1,13 @@
 import { useEffect, type RefObject } from 'react';
 import type { Anime } from '../catalog';
 import type { DiscordPlayback } from '../../shared/discord';
+import { usePreferences } from '../PreferencesContext';
 
 export function useDiscordPresence(videoRef: RefObject<HTMLVideoElement | null>, anime: Anime, episode: number, sourceUrl?: string) {
+  const { preferences: { discordRpc } } = usePreferences();
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !sourceUrl) return;
+    if (!discordRpc || !video || !sourceUrl) return;
     const session = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
     let queue = Promise.resolve();
     const send = (body: object) => {
@@ -26,6 +28,7 @@ export function useDiscordPresence(videoRef: RefObject<HTMLVideoElement | null>,
     const events = ['loadedmetadata', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'error'];
     events.forEach(event => video.addEventListener(event, update));
     window.addEventListener('pagehide', clear);
+    update();
     const timer = window.setInterval(update, 15000);
     return () => {
       clearInterval(timer);
@@ -33,5 +36,5 @@ export function useDiscordPresence(videoRef: RefObject<HTMLVideoElement | null>,
       window.removeEventListener('pagehide', clear);
       clear();
     };
-  }, [videoRef, anime.id, episode, sourceUrl]);
+  }, [videoRef, anime.id, episode, sourceUrl, discordRpc]);
 }

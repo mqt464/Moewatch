@@ -28,6 +28,7 @@ export function selectVariant(text: string, quality: number): string {
 }
 
 export function retryableDownloadError(error: unknown): boolean {
+  if (error instanceof Error && error.name === 'TimeoutError') return true;
   const failure = error as { retryable?: boolean; code?: string };
   if (typeof failure?.retryable === 'boolean') return failure.retryable;
   return ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE', 'TIMEOUT', 'RATE_LIMITED'].includes(failure?.code || '');

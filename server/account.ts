@@ -1,3 +1,4 @@
+import { anilist } from './infrastructure/anilist';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -9,7 +10,6 @@ import { ApiError } from './infrastructure/errors';
 type Session = { accessToken: string; expiresAt: number; user: { id: number; name: string; avatar: string } | null };
 type OAuthState = { expiresAt: number };
 type Config = { clientId: string; clientSecret: string } | null;
-const api = 'https://graphql.anilist.co';
 const authorize = 'https://anilist.co/api/v2/oauth/authorize';
 const token = 'https://anilist.co/api/v2/oauth/token';
 const sessionCookie = 'moewatch_session';
@@ -161,8 +161,8 @@ export class AccountService {
     if (!session) throw new ApiError('INVALID_REQUEST', 'Sign in with AniList first', 401);
     return session;
   }
-  private async graph<T>(session: Session, query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<T> {
-    const response = await fetch(api, { method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]), headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` }, body: JSON.stringify({ query, variables }) });
+  private async graph<T>(session: Session, query: string, variables: Record<string, unknown>, signal: AbortSignal, fresh = false): Promise<T> {
+    const response = await anilist.request(query, variables, { signal, token: session.accessToken, fresh, ttlMs: query.includes('recommendations(') ? 30 * 60_000 : 3 * 60_000 });
     if (response.status === 401) { session.expiresAt = 0; this.prune(); this.saveSessions(); throw new ApiError('INVALID_REQUEST', 'AniList session expired; sign in again', 401); }
     if (response.status === 404) throw new ApiError('NOT_FOUND', 'AniList list entry not found', 404);
     if (!response.ok) throw upstreamError(response.status);
@@ -218,13 +218,14 @@ export class AccountService {
     } catch { this.redirectResult(response, 'error'); }
   }
   private redirectResult(response: ServerResponse, result: 'connected' | 'error'): void { response.writeHead(302, { location: `/settings/account?result=${result}`, 'cache-control': 'no-store' }); response.end(); }
-  logout(request: IncomingMessage, response: ServerResponse): void { this.cancelLogin(request, response); this.loadSessions(); const id = cookie(request, sessionCookie); if (id) this.sessions.delete(id); this.saveSessions(); setCookie(response, `${sessionCookie}=; ${cookieFlags(this.secure(request))}`); }
+  logout(request: IncomingMessage, response: ServerResponse): void { this.cancelLogin(request, response); this.loadSessions(); const id = cookie(request, sessionCookie); if (id) { const session = this.sessions.get(id); if (session) anilist.invalidate(session.accessToken); this.sessions.delete(id); } this.saveSessions(); setCookie(response, `${sessionCookie}=; ${cookieFlags(this.secure(request))}`); }
   async list(request: IncomingMessage, signal: AbortSignal): Promise<AccountEntry[]> {
     const session = this.requireSession(request); const user = (await this.status(request)).user;
     if (!user) throw new ApiError('UNAVAILABLE', 'AniList account unavailable', 502);
+    if (request.headers['x-moewatch-refresh'] === '1') anilist.expire(session.accessToken);
     const entries: AccountEntry[] = [];
     for (let page = 1; page <= 100; page++) {
-      const data = await this.graph<{ Page: { pageInfo: { hasNextPage: boolean }; mediaList: any[] } }>(session, `query ($userId: Int!, $page: Int!) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } mediaList(userId: $userId, type: ANIME, sort: UPDATED_TIME_DESC) { id mediaId status progress updatedAt media { id title { english romaji native } description coverImage { extraLarge large } bannerImage startDate { year } format episodes duration averageScore popularity genres status studios(isMain: true) { nodes { name } } characters(perPage: 12, sort: ROLE) { edges { role node { name { full } image { large } } } } relations { edges { relationType node { id type isAdult title { english romaji } coverImage { large } } } } } } } }`, { userId: user.id, page }, signal);
+      const data = await this.graph<{ Page: { pageInfo: { hasNextPage: boolean }; mediaList: any[] } }>(session, `query ($userId: Int!, $page: Int!) { Page(page: $page, perPage: 50) { pageInfo { hasNextPage } mediaList(userId: $userId, type: ANIME, sort: UPDATED_TIME_DESC) { id mediaId status progress updatedAt media { id title { english romaji native } description coverImage { extraLarge large } bannerImage startDate { year } format episodes duration averageScore popularity genres status studios(isMain: true) { nodes { name } } characters(perPage: 12, sort: ROLE) { edges { role node { name { full } image { large } } } } relations { edges { relationType node { id type isAdult title { english romaji } coverImage { large } } } } } } } }`, { userId: user.id, page }, signal, request.headers['x-moewatch-refresh'] === '1');
       if (!Array.isArray(data.Page.mediaList)) throw new ApiError('UPSTREAM_ERROR', 'AniList returned an invalid list', 502);
       entries.push(...data.Page.mediaList.map(item => ({ id: item.id, mediaId: item.mediaId, status: item.status, progress: item.progress ?? 0, updatedAt: item.updatedAt, anime: normalizeAnime(item.media) })));
       if (!data.Page.pageInfo.hasNextPage) return entries;
@@ -250,6 +251,63 @@ export class AccountService {
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== 'NOT_FOUND') throw error;
     }
+  }
+  async favourite(request: IncomingMessage, mediaId: number, signal: AbortSignal, desired?: unknown): Promise<{ isFavourite: boolean; isFavouriteBlocked: boolean }> {
+    await this.assertAccount(request);
+    const session = this.requireSession(request);
+    const read = async () => {
+      const data = await this.graph<{ Media: { isFavourite: boolean; isFavouriteBlocked: boolean } | null }>(session,
+        'query ($id: Int!) { Media(id: $id, type: ANIME) { isFavourite isFavouriteBlocked } }', { id: mediaId }, signal, desired !== undefined);
+      if (!data.Media || typeof data.Media.isFavourite !== 'boolean' || typeof data.Media.isFavouriteBlocked !== 'boolean') throw new ApiError('UPSTREAM_ERROR', 'AniList returned an invalid favourite state', 502);
+      return data.Media;
+    };
+    if (desired !== undefined && typeof desired !== 'boolean') throw new ApiError('INVALID_REQUEST', 'Expected a favourite boolean', 400);
+    const current = await read();
+    if (typeof desired !== 'boolean' || current.isFavourite === desired) return current;
+    if (desired && current.isFavouriteBlocked) throw new ApiError('INVALID_REQUEST', 'This anime cannot be favourited on AniList', 400);
+    await this.graph(session, 'mutation ($id: Int!) { ToggleFavourite(animeId: $id) { __typename } }', { id: mediaId }, signal);
+    return read();
+  }
+  async discussionQuery(request: IncomingMessage, query: string, variables: Record<string, unknown>, signal: AbortSignal) {
+    const session = this.session(request);
+    if (session) return this.graph<unknown>(session, query, variables, signal);
+    const response = await anilist.request(query, variables, { signal, ttlMs: 60000 });
+    if (!response.ok) throw upstreamError(response.status);
+    const body = await response.json();
+    if (!body.data || body.errors?.length) throw new ApiError('UPSTREAM_ERROR', 'AniList discussions unavailable', 502);
+    return body.data;
+  }
+  async likeDiscussion(request: IncomingMessage, input: unknown, signal: AbortSignal) {
+    await this.assertAccount(request);
+    if (!input || typeof input !== 'object' || !('id' in input) || typeof input.id !== 'number' || !Number.isSafeInteger(input.id) || input.id <= 0 || input.id > 2147483647 || !('type' in input) || (input.type !== 'THREAD' && input.type !== 'THREAD_COMMENT')) throw new ApiError('INVALID_REQUEST', 'Invalid discussion like', 400);
+    const data = await this.graph<{ ToggleLikeV2: { likeCount: number; isLiked: boolean } }>(this.requireSession(request), 'mutation ($id: Int!, $type: LikeableType!) { ToggleLikeV2(id: $id, type: $type) { ... on Thread { likeCount isLiked } ... on ThreadComment { likeCount isLiked } } }', { id: input.id, type: input.type }, signal);
+    if (!data.ToggleLikeV2 || !Number.isSafeInteger(data.ToggleLikeV2.likeCount) || typeof data.ToggleLikeV2.isLiked !== 'boolean') throw new ApiError('UPSTREAM_ERROR', 'AniList returned an invalid like state', 502);
+    return data.ToggleLikeV2;
+  }
+  async recommendations(request: IncomingMessage, seeds: number[], signal: AbortSignal) {
+    await this.assertAccount(request);
+    const session = this.requireSession(request);
+    const favourites = await this.graph<{ Viewer: { favourites: { anime: { nodes: { id: number }[] } } } }>(session,
+      'query { Viewer { favourites { anime(perPage: 10) { nodes { id } } } } }', {}, signal);
+    const favouriteIds = new Set(favourites.Viewer.favourites.anime.nodes.map(item => item.id));
+    const ids = [...new Set([...favouriteIds, ...seeds])].slice(0, 10).sort((a, b) => a - b);
+    if (!ids.length) return [];
+    type Media = Parameters<typeof normalizeAnime>[0];
+    const fields = 'id type isAdult title { english romaji native } description coverImage { extraLarge large } bannerImage startDate { year } format episodes duration averageScore popularity genres status';
+    const data = await this.graph<Record<string, { recommendations: { nodes: { rating: number; mediaRecommendation: (Media & { type: string }) | null }[] } } | null>>(session,
+      `query { ${ids.map(id => `seed${id}: Media(id: ${id}, type: ANIME) { recommendations(perPage: 20, sort: RATING_DESC) { nodes { rating mediaRecommendation { ${fields} } } } }`).join(' ')} }`, {}, signal);
+    const ranked = new Map<number, { anime: ReturnType<typeof normalizeAnime>; score: number }>();
+    for (const id of ids) {
+      for (const recommendation of data[`seed${id}`]?.recommendations.nodes ?? []) {
+        const media = recommendation.mediaRecommendation;
+        if (!media || media.type !== 'ANIME' || media.isAdult || ids.includes(media.id) || recommendation.rating <= 0) continue;
+        const previous = ranked.get(media.id);
+        // Log votes so a single popular source cannot swamp several matching favourites.
+        const score = Math.log1p(recommendation.rating) * (favouriteIds.has(id) ? 2 : 1);
+        ranked.set(media.id, { anime: previous?.anime ?? normalizeAnime(media), score: (previous?.score ?? 0) + score });
+      }
+    }
+    return [...ranked.values()].sort((a, b) => b.score - a.score || a.anime.id - b.anime.id).map(item => item.anime);
   }
   private async assertAccount(request: IncomingMessage): Promise<void> {
     this.requireSession(request);

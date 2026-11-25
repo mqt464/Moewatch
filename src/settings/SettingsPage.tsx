@@ -1,7 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { SharedAccess } from './SharedAccess';
 import { DesktopUpdates } from './DesktopUpdates';
-import { ArrowLeft, CirclePlay, Info, Network, UserRound } from 'lucide-react';
+import { ArrowLeft, Palette, CirclePlay, Info, Network, Plug, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAccount } from '../AccountContext';
@@ -15,6 +15,7 @@ import { DownloadSettings } from '../downloads/DownloadSettings';
 
 const pages = [
   { id: 'account', title: 'Account', icon: UserRound },
+  { id: 'appearance', title: 'Appearance', icon: Palette },
   { id: 'playback', title: 'Playback', icon: CirclePlay },
   { id: 'about', title: 'About', icon: Info },
 ];
@@ -67,13 +68,21 @@ function PlaybackSettings() {
   </>;
 }
 
+function IntegrationSettings() {
+  const { preferences, update } = usePreferences();
+  return <SettingsCard>
+    <SettingRow title="Discord RPC" description="Show what you’re watching in your Discord activity.">{binding => <SettingsToggle {...binding} checked={preferences.discordRpc} onChange={discordRpc => update({ discordRpc })} />}</SettingRow>
+    <SettingRow title="Discord Watch Party" description="Watch together through Discord. Turning this off leaves your current party.">{binding => <SettingsToggle {...binding} checked={preferences.discordWatchParty} onChange={discordWatchParty => update({ discordWatchParty })} />}</SettingRow>
+  </SettingsCard>;
+}
+
 export function SettingsPage() {
   const { section = 'account' } = useParams();
   const { error } = usePreferences();
-  const visiblePages = isTauri() ? [...pages.slice(0, 2), { id: 'shared-access', title: 'Shared Access', icon: Network }, ...pages.slice(2)] : pages;
+  const visiblePages = isTauri() ? [...pages.slice(0, 3), { id: 'integrations', title: 'Integrations', icon: Plug }, { id: 'shared-access', title: 'Shared Access', icon: Network }, ...pages.slice(3)] : pages;
   const page = visiblePages.find(entry => entry.id === section);
 
-  if (section === 'appearance' || section === 'storage') return <Navigate to="/settings" replace />;
+  if (section === 'storage') return <Navigate to="/settings" replace />;
 
   return <div className="settings-layout">
     <aside className="settings-sidebar">
@@ -84,7 +93,9 @@ export function SettingsPage() {
       <header className="settings-page-heading"><h1>{page?.title || 'Page not found'}</h1></header>
       {section === 'shared-access' && isTauri() && <SharedAccess />}
       {section === 'account' && <AccountSettings />}
+      {section === 'appearance' && <SettingsCard><SettingRow title="Homepage" description="Reorder rows, choose card styles, and show or hide sections."><Link className="settings-action settings-action-default" to="/" state={{ editHome: true }}>Customize home</Link></SettingRow></SettingsCard>}
       {section === 'playback' && <PlaybackSettings />}
+      {section === 'integrations' && isTauri() && <IntegrationSettings />}
       {section === 'about' && <SettingsCard>
         <SettingRow title="Version"><span className="setting-value">{version}</span></SettingRow>
         <DesktopUpdates />

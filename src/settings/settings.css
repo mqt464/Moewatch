@@ -118,3 +118,5 @@ html[data-reduce-motion='true'] .button:active, html[data-reduce-motion='true'] 
 
 .settings-provider-name { display: inline-flex; align-items: center; gap: 10px; }
 .settings-provider-name img { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; border-radius: 4px; }
+
+.settings-action { border: 0; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }

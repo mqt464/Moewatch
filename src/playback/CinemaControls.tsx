@@ -1,6 +1,6 @@
 import { usePresence } from '../motion';
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings2, Captions, SkipForward } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings2, Captions, SkipForward, PictureInPicture2 } from 'lucide-react';
 import type { AudioPreference, SkipInterval, SkipTimesResponse, SubtitleTrack } from '../../shared/api';
 import { apiRequest } from '../api';
 import { usePreferences } from '../PreferencesContext';
@@ -18,6 +18,20 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   const [fallback, setFallback] = useState<{ key: string; value: SkipTimesResponse } | null>(null), [autoNext, setAutoNext] = useState(() => { try { return localStorage.getItem('moewatch-autonext') !== 'false'; } catch { return true; } });
   const [countdown, setCountdown] = useState<number | null>(null), [idle, setIdle] = useState(false);
   const [remaining, setRemaining] = useState(false);
+  const [pip, setPip] = useState(false);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const sync = () => setPip(document.pictureInPictureElement === video);
+    video.addEventListener('enterpictureinpicture', sync);
+    video.addEventListener('leavepictureinpicture', sync);
+    sync();
+    return () => {
+      video.removeEventListener('enterpictureinpicture', sync);
+      video.removeEventListener('leavepictureinpicture', sync);
+      if (document.pictureInPictureElement === video) void document.exitPictureInPicture().catch(() => {});
+    };
+  }, [videoRef, sourceUrl]);
   const [scrub, setScrub] = useState<{ time: number; position: number } | null>(null);
   useEffect(() => setScrub(null), [sourceUrl]);
   const touchScrubbing = useRef(false);
@@ -96,6 +110,17 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   }, [full, cues, videoRef, sourceUrl]);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); notifyPartyControl(videoRef.current, 'seek'); } }
   function toggle() { togglePlayback(videoRef, onError); }
+  async function pictureInPicture() {
+    const video = videoRef.current;
+    if (!video) return;
+    setNote('');
+    try {
+      if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      setNote('Picture-in-picture is unavailable. Try again once the video has loaded.');
+    }
+  }
   async function fullscreen() {
     const video = videoRef.current;
     if (!video) return;
@@ -159,7 +184,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
       <div className="timeline" onPointerDown={event => { touchScrubbing.current = event.pointerType === 'touch'; }} onPointerUp={event => { if (event.pointerType !== 'mouse') { touchScrubbing.current = false; setScrub(null); } }} onLostPointerCapture={() => { touchScrubbing.current = false; setScrub(null); }} onPointerMove={event => { if (!duration || event.pointerType === 'touch' && !touchScrubbing.current) return; const bounds = event.currentTarget.getBoundingClientRect(); const rotated = window.matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)').matches; const position = Math.max(0, Math.min(1, ((rotated ? event.clientY - bounds.top : event.clientX - bounds.left) - 6) / ((rotated ? bounds.height : bounds.width) - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => { touchScrubbing.current = false; setScrub(null); }} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><div className="timeline-segments" aria-hidden="true">{(['intro', 'outro'] as const).map(kind => { const interval = skip[kind]; return interval ? <span key={kind} className={`timeline-segment timeline-segment-${kind}`} style={{ left: `${interval.start / duration * 100}%`, width: `${(interval.end - interval.start) / duration * 100}%` }} /> : null; })}</div><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}${active ? active.label === 'Skip opening' ? ', opening' : ', ending' : ''}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setScrub({ time, position: duration ? time / duration : 0 }); }} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); if (touchScrubbing.current || event.currentTarget.matches(':focus-visible')) setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
       <div className="cinema-toolbar">
         <div className="transport">{icon(paused?'Play':'Pause',toggle,paused?<Play fill="currentColor"/>:<Pause fill="currentColor"/>,!sourceUrl)}<div className="volume-control">{icon(muted||!volume?'Unmute':'Mute',()=>{if(videoRef.current)videoRef.current.muted=!muted;},muted||!volume?<VolumeX/>:<Volume2/>)}<div className="volume-slider"><input style={{'--volume':`${(muted?0:volume)*100}%`} as React.CSSProperties} type="range" aria-label="Volume" aria-valuetext={`${Math.round((muted?0:volume)*100)}%`} min={0} max={1} step={0.05} value={muted?0:volume} onChange={event=>{if(videoRef.current){videoRef.current.volume=Number(event.target.value);videoRef.current.muted=false;}}}/><span className="volume-tooltip" aria-hidden="true" style={{left:`calc(${(muted?0:volume)*100}% + ${6-(muted?0:volume)*12}px)`}}>{Math.round((muted?0:volume)*100)}%</span></div></div></div>
-        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{icon(full?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),full?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
+        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{document.pictureInPictureEnabled && <button type="button" className="cinema-icon" aria-label={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} title={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} aria-pressed={pip} disabled={!sourceUrl || !duration} onClick={() => void pictureInPicture()}><PictureInPicture2 aria-hidden="true"/></button>}{icon(full?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),full?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
       </div>
     </div>
   </>;

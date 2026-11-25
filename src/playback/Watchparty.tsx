@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode,
 import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { apiRequest } from '../api';
+import { usePreferences } from '../PreferencesContext';
 import { partySeekTarget, emptyParty, type PartyAction, type PartyPlayback, type PartyStatus } from '../../shared/watchparty';
 import { applyPartyPlayback, partyControlEvent } from './partyPlayback';
 
@@ -13,11 +14,13 @@ type PartyContext = {
   advertise: (playback: PartyPlayback | null) => void;
   action: (action: PartyAction, playback: PartyPlayback) => void;
   leave: () => void;
+  ready: (transition: string) => void;
 };
-const Context = createContext<PartyContext>({ status: emptyParty, advertise() {}, action() {}, leave() {} });
+const Context = createContext<PartyContext>({ status: emptyParty, advertise() {}, action() {}, leave() {}, ready() {} });
 export const useWatchparty = () => useContext(Context);
 
 export function WatchpartyProvider({ children }: { children: ReactNode }) {
+  const { preferences: { discordWatchParty } } = usePreferences();
   const [status, setStatus] = useState<PartyStatus>(emptyParty);
   const current = useRef(status); current.current = status;
   const navigate = useNavigate();
@@ -29,10 +32,15 @@ export function WatchpartyProvider({ children }: { children: ReactNode }) {
   const fail = () => setStatus(previous => previous.room ? { ...previous, playback: null,
     error: 'Watchparty sync disconnected. Leave the party to continue watching on your own.' } : previous);
   useEffect(() => {
+    if (!discordWatchParty) {
+      setStatus(emptyParty);
+      void post('playback', null).then(() => post('leave', {})).catch(() => {});
+      return;
+    }
     const controller = new AbortController();
     let events: EventSource | undefined;
     const receive = (value: PartyStatus) => {
-      if (left.current) return;
+      if (controller.signal.aborted || left.current) return;
       setStatus(value);
       const update = value.playback;
       if (value.destination && !value.error) {
@@ -54,7 +62,7 @@ export function WatchpartyProvider({ children }: { children: ReactNode }) {
       events.onerror = () => fail();
     }).catch(() => {});
     return () => { controller.abort(); events?.close(); };
-  }, []);
+  }, [discordWatchParty]);
   useEffect(() => {
     const wasWatching = previousPath.current.startsWith('/watch/');
     previousPath.current = location.pathname;
@@ -67,10 +75,15 @@ export function WatchpartyProvider({ children }: { children: ReactNode }) {
     }
   }, [location.pathname, status.enabled, status.room]);
   const value: PartyContext = {
-    status,
-    advertise(playback) { if (current.current.enabled && !left.current) void post('playback', playback).catch(fail); },
+    status: discordWatchParty ? status : emptyParty,
+    ready(transition) { if (!left.current) void post('ready', transition).catch(fail); },
+    advertise(playback) { if (discordWatchParty && current.current.enabled && !left.current) void post('playback', playback).catch(fail); },
     action(action, playback) {
-      if (current.current.room && !current.current.error && !left.current) void post('action', { ...playback, action }).catch(fail);
+      if (discordWatchParty && current.current.room && !current.current.error && !left.current) {
+        if (action === 'episode' && current.current.members.length > 1) setStatus(previous => ({ ...previous, playback: null,
+          loading: { id: 'pending', animeId: playback.animeId, episode: playback.episode, ready: [] } }));
+        void post('action', { ...playback, action }).catch(fail);
+      }
     },
     leave() {
       if (left.current) return;
@@ -98,10 +111,15 @@ export function usePartyPlayer(videoRef: RefObject<HTMLVideoElement | null>, ani
     const { status } = current.current;
     const update = status.playback;
     const video = videoRef.current;
+    if (status.loading && status.loading.animeId === animeId && status.loading.episode === episode && video && !local) {
+      video.pause();
+      if (video.readyState >= 3) current.current.ready(status.loading.id);
+      return true;
+    }
     if (!video || video.readyState < 1 || !Number.isFinite(video.duration) || !update || status.error
       || update.animeId !== animeId || update.episode !== episode || local) return false;
     const key = `${update.clock}:${update.sender}`;
-    if (!force && (applied.current === key || update.sender === status.self && update.action !== 'sync')) return true;
+    if (!force && (applied.current === key || update.sender === status.self && update.action !== 'sync' && !update.transition)) return true;
     applied.current = key;
     try {
       await applyPartyPlayback(video, update, force);
@@ -111,6 +129,15 @@ export function usePartyPlayer(videoRef: RefObject<HTMLVideoElement | null>, ani
     catch { setError('Playback could not start. Press Play to join the watchparty.'); }
     return true;
   }
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !party.status.loading || local) return;
+    const check = () => { void apply(true); };
+    video.addEventListener('canplay', check);
+    video.addEventListener('play', check);
+    check();
+    return () => { video.removeEventListener('canplay', check); video.removeEventListener('play', check); };
+  }, [party.status.loading?.id, sourceUrl, animeId, episode, local]);
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !sourceUrl || local) return;
@@ -145,7 +172,7 @@ export function usePartyPlayer(videoRef: RefObject<HTMLVideoElement | null>, ani
     const recovered = disconnected.current && !party.status.error;
     disconnected.current = Boolean(party.status.error);
     void apply(recovered);
-  }, [party.status.playback, party.status.error, sourceUrl]);
+  }, [party.status.playback, party.status.error, party.status.loading?.id, sourceUrl]);
   useEffect(() => {
     if (party.status.error || error) videoRef.current?.pause();
   }, [party.status.error, error]);
@@ -153,6 +180,7 @@ export function usePartyPlayer(videoRef: RefObject<HTMLVideoElement | null>, ani
   return {
     ...party,
     error: party.status.error || error,
+    waiting: Boolean(party.status.loading && !local),
     ready: () => apply(true),
     next(nextEpisode: number) {
       const playback = { animeId, episode: nextEpisode, time: 0, paused: false, rate: videoRef.current?.playbackRate || 1, at: Date.now() };
@@ -172,5 +200,18 @@ export function PartyAvatars({ members, onLeave }: { members: PartyStatus['membe
       {members.length > 4 && <span className="party-avatar party-overflow" title={members.slice(4).map(member => member.name).join(', ')}>+{members.length - 4}</span>}
     </div>
     <button type="button" className="party-leave" aria-label="Leave watchparty" title="Leave watchparty" onClick={onLeave}><LogOut aria-hidden="true" size={19} /></button>
+  </div>;
+}
+
+export function PartyReadiness({ members, ready }: { members: PartyStatus['members']; ready: string[] }) {
+  return <div className="party-readiness" aria-label="Waiting for the watchparty">
+    <div className="party-ready-avatars">{members.map(member => {
+      const isReady = ready.includes(member.id);
+      return <span key={member.id} className={`party-ready-avatar${isReady ? ' is-ready' : ''}`} title={`${member.name}: ${isReady ? 'ready' : 'loading'}`}>
+        <span aria-hidden="true">{member.name.slice(0, 1).toUpperCase()}</span>
+        {member.avatar && <img src={member.avatar} alt={`${member.name}: ${isReady ? 'ready' : 'loading'}`} referrerPolicy="no-referrer" onError={event => { event.currentTarget.style.display = 'none'; }} />}
+      </span>;
+    })}</div>
+    <span className="party-ready-count">({members.filter(member => ready.includes(member.id)).length}/{members.length})</span>
   </div>;
 }

@@ -1,3 +1,29 @@
+# Release audits
+
+## Version 0.1.13 audit
+
+Reviewed all pending tracked and new files for the documented desktop host and small watchparty load.
+
+- Add AniList discussion threads, paged replies, likes, Markdown, images and spoiler disclosures.
+- Add AniList favourites and recommendations based on favourites and watched titles.
+- Share account-isolated AniList request caching, concurrent reads, rate-limit cooldown and stale read fallback; invalidate reads after writes.
+- Throttle automatic account sync while keeping manual refresh fresh and queued edits durable.
+- Add homepage customization: row order, visibility, hero visibility, reset, and portrait or landscape watching cards.
+- Add episode artwork, progress and remaining time to landscape watching cards.
+- Refresh series layout, metadata, genre links, episode ranges, synopsis and responsive styling.
+- Add page titles that follow navigation, episodes and browser history.
+- Add picture-in-picture controls and separate Discord activity/watchparty preferences.
+- Wait for watchparty members to load the next episode before resuming together; show readiness avatars.
+- Keep keyboard navigation instant and respect reduced-motion settings.
+- Retry timed-out media downloads.
+- Remove unused discussion thread payload and view counts; reset discussion pagination when changing anime.
+- Update settings documentation and bump npm, Tauri and Rust versions to 0.1.13.
+
+Validation
+184 app/API tests passed, two opt-in tests skipped; seven relay tests passed. All 87 browser tests covering changed areas passed, followed by seven affected tests after cleanup. Production build and TypeScript unused-code checks passed.
+
+Interactive installation, real-account AniList actions, multi-client Discord playback and an installed-client upgrade were not manually tested.
+
 # Initial release audit
 
 ## Version 0.1.8 hotfix audit

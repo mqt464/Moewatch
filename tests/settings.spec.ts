@@ -33,7 +33,7 @@ test('settings show only essential categories and no filler', async ({ page }) =
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: 'Settings pages' });
-  await expect(navigation.getByRole('link')).toHaveText(['Account', 'Playback', 'About']);
+  await expect(navigation.getByRole('link')).toHaveText(['Account', 'Appearance', 'Playback', 'About']);
   for (const section of ['account', 'playback', 'about']) {
     await page.goto('/settings/' + section);
     await expect(page.locator('.settings-content h2, .settings-content h3')).toHaveCount(section === 'playback' ? 2 : 0);
@@ -81,6 +81,28 @@ test('audio and subtitle preferences persist', async ({ page }) => {
   for (const icon of await page.locator('.settings-provider-name img').all()) {
     await expect.poll(() => icon.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   }
+});
+
+test('desktop Discord integration toggles persist and disabling watch parties leaves', async ({ page }) => {
+  await page.addInitScript(() => Object.assign(window, { isTauri: true, __TAURI_INTERNALS__: { invoke: async () => null, transformCallback: () => 1, unregisterCallback: () => {} } }));
+  let leaves = 0;
+  await page.route('**/api/v1/discord/party/playback', route => route.fulfill({ json: { ok: true } }));
+  await page.route('**/api/v1/discord/party/leave', route => { leaves++; return route.fulfill({ json: { ok: true } }); });
+  await page.goto('/settings/integrations');
+  await expect(page.getByRole('heading', { name: 'Integrations', exact: true })).toBeVisible();
+  const rpc = page.getByRole('switch', { name: 'Discord RPC', exact: true });
+  const party = page.getByRole('switch', { name: 'Discord Watch Party', exact: true });
+  await expect(rpc).toBeChecked();
+  await expect(party).toBeChecked();
+  await rpc.uncheck();
+  await expect(party).toBeChecked();
+  await party.uncheck();
+  await expect.poll(() => leaves).toBeGreaterThan(0);
+  await page.reload();
+  await expect(rpc).not.toBeChecked();
+  await expect(party).not.toBeChecked();
+  await rpc.check();
+  await expect(party).not.toBeChecked();
 });
 
 test('provider names and icons stay readable across settings widths', async ({ page }) => {

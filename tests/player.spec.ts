@@ -47,6 +47,38 @@ async function fixture(page:Page, options: { waitForMedia?: boolean; dub?: boole
  await page.goto('/watch/154587/1');
  if (options.waitForMedia !== false) await expect.poll(()=>page.locator('video').evaluate(v=>(v as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
 }
+test('picture-in-picture toggles, follows native dismissal and handles rejection', async ({ page }) => {
+ await page.addInitScript(() => {
+   let current: HTMLVideoElement | null = null;
+   Object.defineProperty(document, 'pictureInPictureEnabled', { value: true });
+   Object.defineProperty(document, 'pictureInPictureElement', { get: () => current });
+   HTMLVideoElement.prototype.requestPictureInPicture = async function () {
+     current = this;
+     this.dispatchEvent(new Event('enterpictureinpicture'));
+     return {} as PictureInPictureWindow;
+   };
+   document.exitPictureInPicture = async () => {
+     const video = current;
+     current = null;
+     video?.dispatchEvent(new Event('leavepictureinpicture'));
+   };
+ });
+ await fixture(page);
+ await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
+ const exit = page.getByRole('button', { name: 'Exit picture-in-picture', exact: true });
+ await expect(exit).toHaveAttribute('aria-pressed', 'true');
+ await exit.click();
+ await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
+ await page.evaluate(() => document.exitPictureInPicture());
+ await expect(page.getByRole('button', { name: 'Picture-in-picture', exact: true })).toHaveAttribute('aria-pressed', 'false');
+ await page.locator('video').evaluate(video => {
+   video.requestPictureInPicture = async () => { throw new Error('Denied'); };
+ });
+ await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
+ await expect(page.getByRole('status').filter({ hasText: 'Picture-in-picture is unavailable' })).toBeVisible();
+ await expect(page.locator('.player-empty')).toHaveCount(0);
+});
+
 test('custom player plays real media, seeks, renders subtitles, skips and resumes',async({page})=>{
  await fixture(page);
  await expect(page.locator('video')).not.toHaveAttribute('controls');
@@ -842,4 +874,37 @@ test('native player controls sync watchparty actions without remote echoes', asy
  await expect.poll(() => video.evaluate(element => element.currentTime)).toBeCloseTo(1, 1);
  await video.dispatchEvent('webkitendfullscreen');
  expect(commands).toHaveLength(4);
+});
+
+test('watchparty readiness stays below the spinner and playback waits for the group', async ({ page }) => {
+  await fixture(page, { party: true });
+  const readiness: string[] = [];
+  await page.route('**/api/v1/discord/party/ready', async route => {
+    readiness.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.evaluate(async () => {
+    const state = await (await fetch('/api/v1/discord/party')).json();
+    window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: { ...state,
+      loading: { id: '5:10', animeId: 154587, episode: 1, ready: ['10', '11'] },
+      playback: { animeId: 154587, episode: 1, time: 0, paused: true, rate: 1, at: Date.now(), action: 'episode', clock: 5, sender: '10', transition: '5:10' },
+    } }));
+  });
+  await expect(page.locator('.party-ready-count')).toHaveText('(2/6)');
+  await expect(page.locator('.party-ready-avatar.is-ready')).toHaveCount(2);
+  await expect(page.locator('.party-ready-avatar:not(.is-ready)')).toHaveCount(4);
+  await expect(page.locator('.party-ready-avatar:not(.is-ready)').first()).toHaveCSS('opacity', '0.3');
+  await expect(page.locator('.player-shell video')).toHaveJSProperty('paused', true);
+  await expect.poll(() => readiness.includes('5:10')).toBe(true);
+  const spinner = (await page.locator('.buffer-spinner').boundingBox())!;
+  const avatars = (await page.locator('.party-ready-avatars').boundingBox())!;
+  expect(avatars.y).toBeGreaterThan(spinner.y + spinner.height);
+  await page.evaluate(async () => {
+    const state = await (await fetch('/api/v1/discord/party')).json();
+    window.dispatchEvent(new CustomEvent('fixture-party-state', { detail: { ...state,
+      playback: { animeId: 154587, episode: 1, time: 0, paused: false, rate: 1, at: Date.now(), action: 'play', clock: 8, sender: '10', transition: '5:10' },
+    } }));
+  });
+  await expect(page.locator('.party-readiness')).toHaveCount(0);
+  await expect(page.locator('.player-shell video')).toHaveJSProperty('paused', false);
 });

@@ -24,7 +24,7 @@ test('cached heroes show compact metadata chips and fractional five-star ratings
   expect(await page.locator('.header').evaluate(element => getComputedStyle(element, '::before').backgroundImage)).toContain('rgba(0, 0, 0, 0.333)');
   const chip = await metadata.locator('.metadata-format').evaluate(element => ({ border: getComputedStyle(element).borderStyle, background: getComputedStyle(element).backgroundColor }));
   expect(chip.border).toBe('none');
-  expect(chip.background).toContain('rgba(97, 69, 120, 0.76');
+  expect(chip.background).toBe('rgb(97, 69, 120)');
   const colors = await metadata.locator('.metadata-format, .metadata-episodes, .metadata-popularity, .metadata-rating').evaluateAll(elements => elements.map(element => getComputedStyle(element).color));
   expect(new Set(colors).size).toBe(4);
   await expect(page.locator('.hero-art')).toHaveClass(/is-ready/);

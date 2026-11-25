@@ -1,3 +1,11 @@
+import { SeriesMetadata } from './SeriesMetadata';
+import { Link, useMotionAllowed } from './navigation';
+import { ContinueCard } from './ContinueCard';
+import { EditableHomeRow, HomeEditingBar, homeRowNames } from './HomeEditing';
+import { moveHomeRow, type HomeRowId } from './homeLayout';
+import { preferencesKey } from './preferences';
+import { Discussions } from './Discussions';
+import { apiRequest } from './api';
 import { keyboardInput, usePresence } from './motion';
 import { SeriesFacts } from './SeriesFacts';
 import './pwa';
@@ -7,8 +15,8 @@ void checkDesktopUpdates().catch(() => {});
 import { DocumentScrollbar } from './DocumentScrollbar';
 import React, { Component, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider, Link as RouterLink, NavLink as RouterNavLink, Outlet, useLocation, useViewTransitionState, useParams, useSearchParams, type LinkProps, type NavLinkProps } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Info, Play, Search, X } from 'lucide-react';
+import { createBrowserRouter, RouterProvider, NavLink as RouterNavLink, Outlet, useLocation, useNavigate, useViewTransitionState, useParams, useSearchParams, type NavLinkProps } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Info, Play, Search, X } from 'lucide-react';
 import { Skeleton, SkeletonBox, SkulletProvider } from 'skullet/react';
 import { cachedAnime, curated, fetchAnime, fetchCatalog, type Anime } from './catalog';
 import { heroFraming } from './artwork';
@@ -20,6 +28,7 @@ import './styles.css';
 import { PreferencesProvider, usePreferences } from './PreferencesContext';
 import { ProfileMenu } from './ProfileMenu';
 import { ListStatus } from './ListStatus';
+import { FavouriteButton } from './FavouriteButton';
 import { SettingsPage } from './settings/SettingsPage';
 import { ScrollArea, ScrollFades } from './ScrollArea';
 import { WatchPlayer } from './playback/WatchPlayer';
@@ -33,16 +42,8 @@ type LibraryContextValue = { library: Library; toggle: (anime: Anime) => void; u
 const LibraryContext = React.createContext<LibraryContextValue>({ library: emptyLibrary, toggle: () => {}, update: () => {} });
 const useLibrary = () => React.useContext(LibraryContext);
 
-const motionAllowed = () => !window.matchMedia('(pointer: coarse)').matches && typeof document.startViewTransition === 'function' && document.documentElement.dataset.reduceMotion !== 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-function Link(props: LinkProps) {
-  const transitioning = useViewTransitionState(props.to);
-  const playbackLink = (typeof props.to === 'string' ? props.to : props.to.pathname)?.startsWith('/watch/');
-  return <RouterLink {...props} state={playbackLink ? { ...props.state, autoplay: true } : props.state} data-player-transition={transitioning && playbackLink || undefined} viewTransition={motionAllowed()} />;
-}
-
 function NavLink(props: NavLinkProps) {
-  return <RouterNavLink {...props} viewTransition={motionAllowed()} />;
+  return <RouterNavLink {...props} viewTransition={useMotionAllowed()} />;
 }
 
 function Artwork({ src, alt = '', className = '', eager = false, fallback }: { src: string; alt?: string; className?: string; eager?: boolean; fallback?: React.ReactNode }) {
@@ -141,7 +142,71 @@ function Carousel({ title, href, count, wide = false, children }: { title: strin
 
 const homeGenres = ['Action', 'Adventure', 'Slice of Life'];
 
+function Recommended() {
+  const { user, library, loading, lastSynced } = useAccount();
+  if (!user) return null;
+  return <RecommendedResults key={user.id} userId={user.id} library={library} accountLoading={loading} lastSynced={lastSynced} />;
+}
+
+function RecommendedResults({ userId, library, accountLoading, lastSynced }: { userId: number; library: Library; accountLoading: boolean; lastSynced: number | null }) {
+  const seeds = [...new Set([
+    ...library.saved.filter(anime => ['COMPLETED', 'CURRENT', 'REPEATING'].includes(libraryStatus(library, anime) ?? '')).map(anime => anime.id),
+    ...library.progress.filter(item => libraryStatus(library, item.anime) !== 'DROPPED').map(item => item.anime.id),
+  ])].slice(0, 10).join(',');
+  const [titles, setTitles] = useState<Anime[] | null>(null);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!userId || accountLoading) return;
+    const controller = new AbortController();
+    setError(false);
+    apiRequest<{ anime: Anime[] }>(`/account/recommendations?seeds=${seeds}`, { headers: { 'X-Moewatch-Account': String(userId) }, signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted) setTitles(result.anime); })
+      .catch(() => { if (!controller.signal.aborted) { setTitles(current => current ?? []); setError(true); } });
+    return () => controller.abort();
+  }, [userId, seeds, accountLoading, lastSynced, retry]);
+  const excluded = new Set([...library.saved.map(anime => anime.id), ...library.progress.map(item => item.anime.id)]);
+  const items = titles?.filter(anime => !excluded.has(anime.id)).slice(0, 20);
+  if ((!items?.length && error) || items?.length === 0) return <section className="recommended-empty" aria-labelledby="recommended-heading">
+    <h2 id="recommended-heading">Recommended</h2>
+    <p>{error ? 'AniList recommendations are unavailable right now.' : 'Favourite or watch anime on AniList to discover more shows like them.'}</p>
+    {error && <button className="text-link" onClick={() => setRetry(value => value + 1)}>Retry</button>}
+  </section>;
+  return <Skeleton id="home-recommended" data={items} sample={curated} label="Loading AniList recommendations">
+    {items => <Carousel title="Recommended" count={items.length}>{items.map(anime => <Poster key={anime.id} anime={anime} />)}</Carousel>}
+  </Skeleton>;
+}
+
 function Home() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { preferences, update } = usePreferences();
+  const [editing, setEditing] = useState(location.state?.editHome === true);
+  const [draft, setDraft] = useState(preferences.homeLayout);
+  const [saveError, setSaveError] = useState('');
+  const [announcement, setAnnouncement] = useState('');
+  const layout = editing ? draft : preferences.homeLayout;
+  useEffect(() => {
+    if (location.state?.editHome) {
+      setDraft(preferences.homeLayout);
+      setEditing(true);
+      navigate('/', { replace: true, state: null });
+    }
+  }, [location.state, navigate, preferences.homeLayout]);
+  function moveRow(id: HomeRowId, target: HomeRowId) {
+    const order = moveHomeRow(draft.order, id, target);
+    setDraft({ ...draft, order });
+    setAnnouncement(homeRowNames[id] + ' moved to position ' + (order.indexOf(id) + 1));
+  }
+  function finish(save: boolean) {
+    if (save) {
+      try { localStorage.setItem(preferencesKey, JSON.stringify({ ...preferences, homeLayout: draft })); }
+      catch { setSaveError('Layout could not be saved. Try again.'); return; }
+      update({ homeLayout: draft });
+    }
+    setSaveError('');
+    setEditing(false);
+  }
   const [featured, setFeatured] = useState(featuredHero.current);
   const { library } = useLibrary();
   const [titles, setTitles] = useState<Anime[] | null>(null);
@@ -169,8 +234,15 @@ function Home() {
   }, [retry]);
   const watching = library.saved.filter(anime => libraryStatus(library, anime) === 'CURRENT');
   const resume = library.progress.find(item => item.anime.id === featured?.id);
+  function renderRow(id: HomeRowId): React.ReactNode {
+    if (id === 'watching') return watching.length ? <Carousel title="Watching" count={watching.length} wide={layout.continueStyle === 'landscape'}>{watching.map(anime => layout.continueStyle === 'landscape' ? <ContinueCard key={anime.id} anime={anime} progress={library.progress.find(item => item.anime.id === anime.id)} /> : <Poster key={anime.id} anime={anime} watching progress={library.progress.find(item => item.anime.id === anime.id)} />)}</Carousel> : editing ? <p>No watching titles</p> : null;
+    if (id === 'recommended') return <><Recommended />{editing && <p className="home-edit-note">Recommendations require an AniList account.</p>}</>;
+    if (id === 'trending') return <Skeleton id="home-trending" data={titles} sample={curated} label="Loading trending anime">{items => <Carousel title={live ? 'Trending' : 'Featured'} href="/browse" count={items.length}>{items.map(anime => <Poster key={anime.id} anime={anime} />)}</Carousel>}</Skeleton>;
+    return <Skeleton id={'home-' + id} data={categories[id]} sample={curated.filter(anime => anime.genres.includes(id))} label={'Loading ' + id + ' anime'}>{items => items.length > 0 ? <Carousel title={id} href={'/browse?genre=' + encodeURIComponent(id)} count={items.length}>{items.map(anime => <Poster key={anime.id} anime={anime} />)}</Carousel> : editing ? <p>No titles available</p> : null}</Skeleton>;
+  }
   return <>
-    <Skeleton id="home-hero" data={featured} sample={curated[0]} label="Loading featured anime">{featured =>
+    {(!layout.hero || editing) && <h1 className="sr-only">{editing ? 'Edit homepage' : 'Discover'}</h1>}
+    {layout.hero && <Skeleton id="home-hero" data={featured} sample={curated[0]} label="Loading featured anime">{featured =>
     <div className="home-hero" style={heroFraming(featured.id)}>
     <div className="hero-ambience" aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(featured.banner || featured.cover)})` }} />
     <section className="hero" aria-label="Featured anime" style={heroFraming(featured.id)}>
@@ -187,22 +259,11 @@ function Home() {
       </div>
     </section>
     </div>
-    }</Skeleton>
-    <div className="content-wrap home-content">
+    }</Skeleton>}
+    <div className={"content-wrap home-content" + (editing ? " home-editing" : "")}>
       {offline && <div className="notice" role="status"><Info aria-hidden="true" size={17} /><p>AniList updates unavailable. Showing cached titles where needed.</p><button onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
-      {watching.length > 0 && <Carousel title="Watching" count={watching.length}>
-        {watching.map(anime => <Poster key={anime.id} anime={anime} watching progress={library.progress.find(item => item.anime.id === anime.id)} />)}
-      </Carousel>}
-      <Skeleton id="home-trending" data={titles} sample={curated} label="Loading trending anime">
-        {items => <Carousel title={live ? 'Trending' : 'Featured'} href="/browse" count={items.length}>
-          {items.map(anime => <Poster key={anime.id} anime={anime} />)}
-        </Carousel>}
-      </Skeleton>
-      {homeGenres.map(genre => <Skeleton key={genre} id={`home-${genre}`} data={categories[genre]} sample={curated.filter(anime => anime.genres.includes(genre))} label={`Loading ${genre} anime`}>
-        {items => items.length > 0 && <Carousel title={genre} href={'/browse?genre=' + encodeURIComponent(genre)} count={items.length}>
-          {items.map(anime => <Poster key={anime.id} anime={anime} />)}
-        </Carousel>}
-      </Skeleton>)}
+      {layout.order.map(id => editing ? <EditableHomeRow key={id} id={id} layout={layout} change={setDraft} move={moveRow}>{renderRow(id)}</EditableHomeRow> : !layout.hidden.includes(id) && <React.Fragment key={id}>{renderRow(id)}</React.Fragment>)}
+      {editing && <><span className="sr-only" role="status">{announcement}</span><HomeEditingBar layout={draft} change={setDraft} save={() => finish(true)} cancel={() => finish(false)} error={saveError} /></>}
     </div>
   </>;
 }
@@ -286,9 +347,9 @@ function useAnime(id: string | undefined) {
 function Series() {
   const { id } = useParams();
   const { anime, loading, error, retry } = useAnime(id);
-  return <Skeleton id="series" data={anime} sample={curated[0]} loading={loading} label="Loading series" error={!loading && !anime ? <ErrorPage title={error ? 'Unable to load anime' : 'Anime not found'} text={error ? 'Could not reach AniList. Check your connection and try again.' : 'This title could not be found.'} retry={error ? retry : undefined} /> : undefined}>
+  return <><title>{`${anime?.title || (loading ? 'Loading anime' : error ? 'Unable to load anime' : 'Anime not found')} — Moewatch`}</title><Skeleton id="series" data={anime} sample={curated[0]} loading={loading} label="Loading series" error={!loading && !anime ? <ErrorPage title={error ? 'Unable to load anime' : 'Anime not found'} text={error ? 'Could not reach AniList. Check your connection and try again.' : 'This title could not be found.'} retry={error ? retry : undefined} /> : undefined}>
     {anime => <SeriesContent anime={anime} />}
-  </Skeleton>;
+  </Skeleton></>;
 }
 
 function SeriesContent({ anime }: { anime: Anime }) {
@@ -302,27 +363,30 @@ function SeriesContent({ anime }: { anime: Anime }) {
   const { preferences } = usePreferences();
   const availability = useAvailability(anime.id);
   const streamingEpisodes = availableEpisodes(availability.data, preferences.audio, preferences.providerFallback ? 'auto' : preferences.provider);
-  const audioPending = availability.data?.providers.some(entry => entry.status === 'available' && (preferences.providerFallback || preferences.provider === 'auto' || entry.provider === preferences.provider) && entry.episodes.some(episode => episode.audioStatus === 'unknown'));
   const episodeNumbers = streamingEpisodes.length ? streamingEpisodes : Array.from({ length: anime.episodes || 0 }, (_, index) => index + 1);
   const count = episodeNumbers.length;
   const episodeKey = episodeNumbers.join(',');
   useEffect(() => setEpisodePage(0), [anime.id, episodeKey]);
-  return <><section className="detail-hero" data-player-return={returningToSeries || undefined} style={heroFraming(anime.id)}><Artwork className="hero-art" src={anime.banner || anime.cover} eager /><Artwork className="detail-mobile-art" src={anime.cover} eager /><div className="hero-shade" /><div className="content-wrap detail-heading"><Link className="back-link" to="/browse"><ArrowLeft aria-hidden="true" size={17} />Search</Link><h1>{anime.title}</h1><HeroMetadata anime={anime} /><div className="hero-actions"><Link className="button primary" to={`/watch/${anime.id}/${progress?.episode || streamingEpisodes[0] || 1}`}><Play aria-hidden="true" size={17} fill="currentColor" />{progress ? `Resume episode ${progress.episode}` : `Watch episode ${streamingEpisodes[0] || 1}`}</Link><ListStatus anime={anime} /><DownloadButton anime={anime} /></div></div></section><div className="content-wrap detail-content"><button className="series-details-toggle" aria-expanded={detailsExpanded} aria-controls="series-facts" onClick={() => setDetailsExpanded(!detailsExpanded)}>Series details<ChevronRight aria-hidden="true" size={16} /></button><SeriesFacts expanded={detailsExpanded} synopsisExpanded={synopsisExpanded}><div><p id="series-synopsis" className="synopsis-copy expanded">{!synopsisExpanded && anime.description.length > 240 ? anime.description.slice(0, 240).replace(/\s+\S*$/, '') + '\u2026' : anime.description || 'Synopsis unavailable.'}</p>{anime.description.length > 240 && <button className="synopsis-toggle" aria-expanded={synopsisExpanded} aria-controls="series-synopsis" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{synopsisExpanded ? 'Show less' : 'Show more'}</button>}</div><dl><div><dt>Genres</dt><dd className="genres-list" title={anime.genres.join(', ') || 'Unknown'}>{anime.genres.join(', ') || 'Unknown'}</dd></div><div><dt>Studio</dt><dd>{anime.studios.join(', ') || 'Not announced'}</dd></div><div><dt>Episode length</dt><dd>{anime.duration ? `${anime.duration} minutes` : 'Not announced'}</dd></div><div><dt>Status</dt><dd>{anime.status.replaceAll('_', ' ').toLowerCase()}</dd></div></dl></SeriesFacts><div className="detail-tabs" role="tablist" aria-label="Series information">{['Episodes', 'Characters', 'Related'].map(value => <button role="tab" key={value} id={`tab-${value}`} aria-selected={tab === value} aria-controls="series-panel" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs = ['Episodes', 'Characters', 'Related']; const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 2)) % 3]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }} onClick={() => setTab(value)}>{value}{value === 'Episodes' && count ? <span>{count}</span> : null}</button>)}</div><section id="series-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="series-panel">{tab === 'Episodes' ? <><div className="episode-toolbar"><div className="episode-heading">{count && count > 24 ? <select aria-label="Episode range" value={episodePage} onChange={event => setEpisodePage(Number(event.target.value))}>{Array.from({ length: Math.ceil(count / 24) }, (_, index) => <option key={index} value={index}>Episodes {episodeNumbers[index * 24]}–{episodeNumbers[Math.min(count, (index + 1) * 24) - 1]}</option>)}</select> : <span>{count ? `${count} episodes` : 'Schedule not announced'}</span>}</div>{(availability.loading || streamingEpisodes.length > 0) && <p className="data-note" role="status">{availability.loading ? 'Checking streaming availability\u2026' : audioPending ? 'Audio availability will be checked when you choose an episode.' : 'Available episodes for your audio and provider preferences.'}</p>}</div>{count ? <div className="episodes-grid">{episodeNumbers.slice(episodePage * 24, (episodePage + 1) * 24).map(episode => {
+  return <><section className="detail-hero" data-player-return={returningToSeries || undefined} style={heroFraming(anime.id)}><Artwork className="hero-art" src={anime.banner || anime.cover} eager /><Artwork className="detail-mobile-art" src={anime.cover} eager /><div className="hero-shade" /><div className="content-wrap detail-heading"><h1>{anime.title}</h1><SeriesMetadata anime={anime} /><HeroMetadata anime={anime} detailed /></div></section><div className="content-wrap detail-content"><div className="hero-actions detail-actions"><Link className="button primary" to={`/watch/${anime.id}/${progress?.episode || streamingEpisodes[0] || 1}`}><Play aria-hidden="true" size={17} fill="currentColor" />{progress ? `Resume episode ${progress.episode}` : `Watch episode ${streamingEpisodes[0] || 1}`}</Link><ListStatus anime={anime} /><FavouriteButton mediaId={anime.id} /><DownloadButton anime={anime} /></div><button className="series-details-toggle" aria-expanded={detailsExpanded} aria-controls="series-facts" onClick={() => setDetailsExpanded(!detailsExpanded)}>Synopsis<ChevronRight aria-hidden="true" size={16} /></button><SeriesFacts expanded={detailsExpanded} synopsisExpanded={synopsisExpanded}><div><p id="series-synopsis" className="synopsis-copy expanded">{!synopsisExpanded && anime.description.length > 240 ? anime.description.slice(0, 240).replace(/\s+\S*$/, '') + '\u2026' : anime.description || 'Synopsis unavailable.'}</p>{anime.description.length > 240 && <button className="synopsis-toggle" aria-expanded={synopsisExpanded} aria-controls="series-synopsis" onClick={() => setSynopsisExpanded(!synopsisExpanded)}>{synopsisExpanded ? 'Show less' : 'Show more'}</button>}</div></SeriesFacts><div className="detail-tabs" role="tablist" aria-label="Series information">{['Episodes', 'Characters', 'Related', 'Discussions'].map(value => <button role="tab" key={value} id={`tab-${value}`} aria-selected={tab === value} aria-controls="series-panel" tabIndex={tab === value ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const tabs = ['Episodes', 'Characters', 'Related', 'Discussions']; const next = tabs[(tabs.indexOf(value) + (event.key === 'ArrowRight' ? 1 : 3)) % 4]; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }} onClick={() => setTab(value)}>{value}{value === 'Episodes' && count ? <span>{count}</span> : null}</button>)}</div><section id="series-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="series-panel">{tab === 'Episodes' ? <>{count > 24 && <select className="episode-range" aria-label="Episode range" value={episodePage} onChange={event => setEpisodePage(Number(event.target.value))}>{Array.from({ length: Math.ceil(count / 24) }, (_, index) => <option key={index} value={index}>Episodes {episodeNumbers[index * 24]}–{episodeNumbers[Math.min(count, (index + 1) * 24) - 1]}</option>)}</select>}{count ? <div className="episodes-grid">{episodeNumbers.slice(episodePage * 24, (episodePage + 1) * 24).map(episode => {
   const artwork = anime.episodeArtwork?.find(item => item.number === episode);
   const current = progress?.episode === episode;
-  return <Link to={'/watch/' + anime.id + '/' + episode} className={'episode-row' + (current ? ' is-current' : '')} key={episode}>
-    <div className="episode-image"><Artwork src={artwork?.thumbnail || `/api/v1/anime/${anime.id}/episodes/${episode}/thumbnail?provider=${preferences.provider}&audio=${preferences.audio}&fallback=${preferences.providerFallback}`} fallback={<span className="episode-placeholder" aria-hidden="true" />} />{current && <span className="episode-progress" style={{ width: Math.min(100, progress.time / (progress.duration || 1) * 100) + '%' }} />}</div>
-    <div className="episode-copy"><p><span className="episode-label-number">Episode {episode}</span><span>{anime.duration ? anime.duration + ' min' : ''}</span></p><h3>{artwork?.title || 'Episode ' + episode}</h3>{current && <span className="episode-resume">In progress</span>}</div>
+  const percent = progress && episode < progress.episode ? 100 : current ? Math.min(100, Math.max(0, progress.time / progress.duration * 100)) : 0;
+  const inProgress = current && progress.time < progress.duration;
+  const remaining = inProgress ? Math.max(0, Math.ceil((progress.duration - progress.time) / 60)) : null;
+  const length = current ? Math.ceil(progress.duration / 60) : anime.duration;
+  return <Link to={'/watch/' + anime.id + '/' + episode} className={'episode-row' + (inProgress ? ' is-current' : '')} aria-current={inProgress ? 'true' : undefined} key={episode}>
+    <div className="episode-image"><Artwork src={artwork?.thumbnail || `/api/v1/anime/${anime.id}/episodes/${episode}/thumbnail?provider=${preferences.provider}&audio=${preferences.audio}&fallback=${preferences.providerFallback}`} fallback={<span className="episode-placeholder" aria-hidden="true" />} /><div className="episode-playback"><p><span className="episode-label-number">Episode {episode}</span><span className="episode-time">{remaining !== null ? remaining + ' min left' : length ? length + ' min' : ''}</span></p><span className="episode-progress-track" role="progressbar" aria-label={'Episode ' + episode + ' progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)}><span className="episode-progress" style={{ width: percent + '%' }} /></span></div></div>
+    <div className="episode-copy"><h3>{artwork?.title || 'Episode ' + episode}</h3></div>
   </Link>;
-})}</div> : <p className="muted">Episode information unavailable.</p>}</> : tab === 'Characters' ? anime.characters.length ? <div className="character-grid">{anime.characters.map(character => <article className="character" key={character.name}><Artwork src={character.image} alt={character.name} /><div><h3>{character.name}</h3><p>{character.role.toLowerCase()}</p></div></article>)}</div> : <p className="muted">Character information unavailable.</p> : anime.related.length ? <div className="poster-grid">{anime.related.map(related => <article className="poster" key={related.id}><Link to={`/anime/${related.id}`}><div className="poster-image"><Artwork src={related.cover} alt={related.title} /></div><h3>{related.title}</h3><p>{related.relation.replaceAll('_', ' ').toLowerCase()}</p></Link></article>)}</div> : <p className="muted">No related anime.</p>}</section>{anime.episodeArtwork?.some(e => e.titleSource === 'kitsu' || e.thumbnailSource === 'kitsu' || e.titleSource === 'jikan') && <p className="data-note">Episode metadata: {anime.episodeArtwork.some(e => e.titleSource === 'kitsu' || e.thumbnailSource === 'kitsu') && <a href="https://kitsu.app" target="_blank" rel="noreferrer">Kitsu</a>}{anime.episodeArtwork.some(e => e.titleSource === 'jikan') && <>{anime.episodeArtwork.some(e => e.titleSource === 'kitsu' || e.thumbnailSource === 'kitsu') ? ' · ' : ''}<a href="https://myanimelist.net" target="_blank" rel="noreferrer">MyAnimeList</a></>}</p>}</div></>;
+})}</div> : <p className="muted">Episode information unavailable.</p>}</> : tab === 'Characters' ? anime.characters.length ? <div className="character-grid">{anime.characters.map(character => <article className="character" key={character.name}><Artwork src={character.image} alt={character.name} /><div><h3>{character.name}</h3><p>{character.role.toLowerCase()}</p></div></article>)}</div> : <p className="muted">Character information unavailable.</p> : tab === 'Discussions' ? <Discussions key={anime.id} mediaId={anime.id} /> : anime.related.length ? <div className="poster-grid">{anime.related.map(related => <article className="poster" key={related.id}><Link to={`/anime/${related.id}`}><div className="poster-image"><Artwork src={related.cover} alt={related.title} /></div><h3>{related.title}</h3><p>{related.relation.replaceAll('_', ' ').toLowerCase()}</p></Link></article>)}</div> : <p className="muted">No related anime.</p>}</section>{anime.episodeArtwork?.some(e => e.titleSource === 'kitsu' || e.thumbnailSource === 'kitsu' || e.titleSource === 'jikan') && <p className="data-note">Episode metadata: {anime.episodeArtwork.some(e => e.titleSource === 'kitsu' || e.thumbnailSource === 'kitsu') && <a href="https://kitsu.app" target="_blank" rel="noreferrer">Kitsu</a>}{anime.episodeArtwork.some(e => e.titleSource === 'jikan') && <>{anime.episodeArtwork.some(e => e.titleSource === 'kitsu' || e.thumbnailSource === 'kitsu') ? ' · ' : ''}<a href="https://myanimelist.net" target="_blank" rel="noreferrer">MyAnimeList</a></>}</p>}</div></>;
 }
 
 function Watch() {
-  const { id } = useParams();
+  const { id, episode } = useParams();
   const { anime, loading, error, retry } = useAnime(id);
-  return <Skeleton id="watch" data={anime} sample={curated[0]} loading={loading} label="Loading episode" error={!loading && !anime ? <ErrorPage title="Unable to load episode" text="Check your connection and retry." retry={error ? retry : undefined} /> : undefined}>
+  return <><title>{`${anime ? `${anime.title} · Episode ${episodeNumber(episode, null)}` : loading ? 'Loading episode' : 'Unable to load episode'} — Moewatch`}</title><Skeleton id="watch" data={anime} sample={curated[0]} loading={loading} label="Loading episode" error={!loading && !anime ? <ErrorPage title="Unable to load episode" text="Check your connection and retry." retry={error ? retry : undefined} /> : undefined}>
     {anime => <WatchContent anime={anime} />}
-  </Skeleton>;
+  </Skeleton></>;
 }
 
 function WatchContent({ anime }: { anime: Anime }) {
@@ -364,7 +428,7 @@ function App() {
     if (removal) setRemoved(removal);
   }, [library.saved, user?.id]);
   const location = useLocation();
-  useLayoutEffect(() => { window.scrollTo({ top: 0 }); const main = document.getElementById('main'); main?.focus({ preventScroll: true }); document.title = `${location.pathname.startsWith('/settings') ? 'Settings' : location.pathname === '/list' ? 'My List' : location.pathname === '/browse' ? 'Search' : 'Discover'} — Moewatch`; }, [location.pathname]);
+  useLayoutEffect(() => { window.scrollTo({ top: 0 }); const main = document.getElementById('main'); main?.focus({ preventScroll: true }); }, [location.pathname]);
   return <SkulletProvider mode="dark" theme={{ dark: { base: '#211b21', highlight: '#3b2d37' }, animation: preferences.reduceMotion ? 'none' : 'shimmer' }} reveal={{ hold: 0, duration: preferences.reduceMotion ? 0 : 160 }}><LibraryContext.Provider value={{ library, toggle: anime => { setRemoved(library.saved.some(item => item.id === anime.id) ? anime : null); toggle(anime); }, update }}>{!location.pathname.startsWith('/watch/') && <Header />}<main id="main" className={location.pathname.startsWith('/watch/') ? 'watch-main' : undefined} tabIndex={-1}><div className="page-scene" key={location.pathname}><Outlet /></div>{!location.pathname.startsWith('/watch/') && <DocumentScrollbar />}</main>{storageError && <div className="storage-warning" role="status">Browser storage is unavailable. Your list and history won’t survive a refresh.</div>}{toastMounted && <div {...toastPresence} className="undo-toast" role="status"><span>Removed from My List</span><button onClick={() => { if (removed && !library.saved.some(item => item.id === removed.id)) toggle(removed); setRemoved(null); }}>Undo</button><button className="icon-button" aria-label="Dismiss notification" onClick={() => setRemoved(null)}><X aria-hidden="true" size={16} /></button></div>}</LibraryContext.Provider></SkulletProvider>;
 }
 
@@ -376,13 +440,13 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { failed: b
 
 document.documentElement.classList.toggle('no-view-transitions', typeof document.startViewTransition !== 'function');
 const router = createBrowserRouter([{ element: <WatchpartyProvider><App /></WatchpartyProvider>, children: [
-  { path: '/', element: <Home /> },
-  { path: '/browse', element: <Browse /> },
-  { path: '/list', element: <MyList /> },
-  { path: '/settings/:section?', element: <SettingsPage /> },
+  { path: '/', element: <><title>Discover — Moewatch</title><Home /></> },
+  { path: '/browse', element: <><title>Search — Moewatch</title><Browse /></> },
+  { path: '/list', element: <><title>My List — Moewatch</title><MyList /></> },
+  { path: '/settings/:section?', element: <><title>Settings — Moewatch</title><SettingsPage /></> },
   { path: '/anime/:id', element: <Series /> },
   { path: '/watch/:id/:episode', element: <Watch /> },
-  { path: '*', element: <ErrorPage /> },
+  { path: '*', element: <><title>Page not found — Moewatch</title><ErrorPage /></> },
 ] }]);
 void connectSharedStorage().catch(() => {}).finally(() => createRoot(document.getElementById('root')!).render(<React.StrictMode><ErrorBoundary><PreferencesProvider><AccountProvider><DownloadsProvider><RouterProvider router={router} /><ScrollFades /></DownloadsProvider></AccountProvider></PreferencesProvider></ErrorBoundary></React.StrictMode>));
 

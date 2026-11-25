@@ -1,8 +1,9 @@
+import { defaultHomeLayout, readHomeLayout } from './homeLayout';
 export const preferencesKey = 'moewatch-settings-v1';
 import { providerIds, type AudioPreference, type ProviderPreference } from '../shared/api';
 import type { DownloadQuality } from '../shared/downloads';
 
-export const defaultPreferences = { showYears: false, reduceMotion: false, provider: 'auto' as ProviderPreference, audio: 'sub' as AudioPreference, providerFallback: true, subtitles: false, volume: 1, muted: false, downloadQuality: 720 as DownloadQuality };
+export const defaultPreferences = { homeLayout: defaultHomeLayout, discordRpc: true, discordWatchParty: true, showYears: false, reduceMotion: false, provider: 'auto' as ProviderPreference, audio: 'sub' as AudioPreference, providerFallback: true, subtitles: false, volume: 1, muted: false, downloadQuality: 720 as DownloadQuality };
 export type Preferences = typeof defaultPreferences;
 
 export function readPreferences(raw: string | null): Preferences {
@@ -10,6 +11,9 @@ export function readPreferences(raw: string | null): Preferences {
     const value = JSON.parse(raw || 'null');
     if (!value || typeof value !== 'object') return { ...defaultPreferences };
     return {
+      homeLayout: readHomeLayout(value.homeLayout),
+      discordRpc: typeof value.discordRpc === 'boolean' ? value.discordRpc : defaultPreferences.discordRpc,
+      discordWatchParty: typeof value.discordWatchParty === 'boolean' ? value.discordWatchParty : defaultPreferences.discordWatchParty,
       downloadQuality: [480, 720, 1080].includes(value.downloadQuality) ? value.downloadQuality : defaultPreferences.downloadQuality,
       showYears: typeof value.showYears === 'boolean' ? value.showYears : defaultPreferences.showYears,
       reduceMotion: typeof value.reduceMotion === 'boolean' ? value.reduceMotion : defaultPreferences.reduceMotion,

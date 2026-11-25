@@ -5,6 +5,8 @@ Follow Rei's settings structure: a narrow category sidebar, one page title, and 
 Only expose settings that provide value. Current categories:
 
 - Account: AniList sign-in, sign-out, and manual sync.
+- Appearance: homepage row order, visibility, hero visibility, and watching card style.
+- Integrations, desktop only: Discord activity and watchparty toggles.
 - Playback: preferred audio, subtitles, download quality, host download folder, storage usage, and read-only provider configuration status.
 - Shared access, desktop only: LAN sharing, the connection link, and background operation from the system tray.
 - About: package version and desktop update checks. Updates install only after the user clicks Install update.

@@ -1,5 +1,6 @@
 import test, { mock } from 'node:test'; import assert from 'node:assert/strict'; import {cachedAnime,curated,normalizeAnime,stripHtml,fetchCatalog,fetchAnime} from './catalog';
 test('curated titles',()=>{assert.equal(curated.length,8);assert.equal(curated[0].id,154587);assert.equal(curated[1].title,'Cowboy Bebop');});
+
 test('normalizer strips HTML',()=>{assert.equal(stripHtml('<i>Hello</i><br>world &amp; friends'),'Hello\nworld & friends');const a=normalizeAnime({id:7,title:{english:'Test',romaji:'Tesuto'},description:'<b>Plot</b>',startDate:{year:2024},studios:{nodes:[{name:'Studio'}]}});assert.deepEqual({id:a.id,title:a.title,description:a.description,year:a.year,studios:a.studios},{id:7,title:'Test',description:'Plot',year:2024,studios:['Studio']});});
 
 test('metadata failure is not misrepresented as live data', async () => {
