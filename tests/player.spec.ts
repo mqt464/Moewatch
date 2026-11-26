@@ -450,7 +450,7 @@ test('subtitle and fullscreen failures leave playback usable', async ({ page }) 
  await page.getByRole('button', { name: 'Off', exact: true }).click();
  await expect(page.getByText('Subtitles could not be loaded.')).toHaveCount(0);
  await page.locator('.cinema-header h1').click();
- await page.locator('.player-shell video').evaluate(element => { element.requestFullscreen = () => Promise.reject(new Error('Unavailable')); });
+ await page.locator('.player-shell video').evaluate(element => { element.closest('.watch-content')!.requestFullscreen = () => Promise.reject(new Error('Unavailable')); });
  await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
  await expect(page.getByRole('status')).toHaveText('Fullscreen is unavailable in this browser.');
  await expect(page.locator('video')).toHaveJSProperty('paused', false);
@@ -762,6 +762,7 @@ test.describe('mobile immersive player', () => {
   await page.getByRole('button', { name: 'Pause', exact: true }).tap();
   const video = page.locator('.player-shell video');
   await video.evaluate(element => {
+   Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false });
    Object.defineProperty(element, 'webkitEnterFullscreen', { value: () => element.dispatchEvent(new Event('webkitbeginfullscreen')) });
   });
   await page.getByRole('button', { name: 'Subtitles', exact: true }).tap();
@@ -844,12 +845,14 @@ test.describe('mobile player scroll lock', () => {
 });
 
 
-test('standard native fullscreen targets video and restores inline controls on exit', async ({ page }) => {
+test('custom fullscreen keeps player controls and restores the button on exit', async ({ page }) => {
  await fixture(page);
  await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
- await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
- await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', true);
+ await expect.poll(() => page.evaluate(() => document.fullscreenElement?.className)).toContain('watch-content');
+ await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', false);
+ await expect(page.getByRole('button', { name: 'Exit fullscreen', exact: true })).toBeVisible();
  await page.evaluate(() => document.exitFullscreen());
+ await expect(page.getByRole('button', { name: 'Fullscreen', exact: true })).toBeVisible();
  await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', false);
 });
 
@@ -948,4 +951,53 @@ test('unattended playback requires confirmation before another episode', async (
  await expect(dialog).toHaveCount(0);
  await expect(page).toHaveURL(/\/1$/);
  await expect.poll(() => page.locator('video').evaluate(video => video.paused)).toBe(true);
+});
+
+test('video fullscreen remains available without element fullscreen', async ({ page }) => {
+ await fixture(page);
+ await page.evaluate(() => Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false }));
+ await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
+ await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
+ await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', true);
+ await page.evaluate(() => document.exitFullscreen());
+ await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', false);
+ await expect(page.getByRole('button', { name: 'Fullscreen', exact: true })).toBeVisible();
+});
+
+test('touch devices keep custom controls when element fullscreen is available', async ({ browser }) => {
+ const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+ const page = await context.newPage();
+ try {
+  await fixture(page);
+  await page.getByRole('button', { name: 'Fullscreen', exact: true }).tap();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement?.className)).toContain('watch-content');
+  await expect(page.locator('.player-shell video')).toHaveJSProperty('controls', false);
+  const bounds = await page.locator('.watch-content').boundingBox();
+  expect(Math.round(bounds!.width)).toBe(390);
+  expect(Math.round(bounds!.height)).toBe(844);
+  const timeline = page.locator('.timeline');
+  const timelineBounds = (await timeline.boundingBox())!;
+  await timeline.dispatchEvent('pointerdown', { pointerType: 'touch' });
+  await timeline.dispatchEvent('pointermove', { pointerType: 'touch', clientX: timelineBounds.x + timelineBounds.width / 2, clientY: timelineBounds.y + timelineBounds.height / 2 });
+  const duration = await page.locator('video').evaluate(video => video.duration);
+  const previewTime = await page.locator('.scrub-preview span').textContent();
+  expect(previewTime).toBe('0:' + String(Math.floor(duration / 2)).padStart(2, '0'));
+  await timeline.dispatchEvent('pointercancel');
+  await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).tap();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+ } finally { await context.close(); }
+});
+
+test('failed native fullscreen exit retains native controls', async ({ page }) => {
+ await fixture(page);
+ const video = page.locator('video');
+ await video.dispatchEvent('webkitbeginfullscreen');
+ await video.evaluate(element => {
+  Object.defineProperty(element, 'webkitExitFullscreen', { value: () => { throw new Error('Exit failed'); } });
+ });
+ await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).click();
+ await expect(page.getByRole('status')).toHaveText('Fullscreen is unavailable in this browser.');
+ await expect(video).toHaveJSProperty('controls', true);
+ await video.dispatchEvent('webkitendfullscreen');
+ await expect(video).toHaveJSProperty('controls', false);
 });

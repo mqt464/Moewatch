@@ -16,7 +16,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   const { preferences, update } = usePreferences();
   const track = preferences.subtitles && tracks.length ? Math.max(0, tracks.findIndex(entry => entry.language === 'en')) : -1;
   const [time, setTime] = useState(0), [duration, setDuration] = useState(0), [paused, setPaused] = useState(true), [muted, setMuted] = useState(false), [volume, setVolume] = useState(1), [buffered, setBuffered] = useState(0);
-  const [panel, setPanel] = useState(''), [cues, setCues] = useState<Cue[]>([]), [full, setFull] = useState(false), [note, setNote] = useState('');
+  const [panel, setPanel] = useState(''), [cues, setCues] = useState<Cue[]>([]), [fullscreenMode, setFullscreenMode] = useState<'inline' | 'custom' | 'native'>('inline'), [note, setNote] = useState('');
   const [fallback, setFallback] = useState<{ key: string; value: SkipTimesResponse } | null>(null), [autoNext, setAutoNext] = useState(() => { try { return localStorage.getItem('moewatch-autonext') !== 'false'; } catch { return true; } });
   const [countdown, setCountdown] = useState<number | null>(null), [idle, setIdle] = useState(false);
   const [watchPrompt, setWatchPrompt] = useState<'still' | 'sleep' | null>(null);
@@ -115,13 +115,15 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    const root = video.closest('.watch-content');
     let nativeFull = false;
-    const enter = () => { nativeFull = true; video.controls = true; setFull(true); };
-    const leave = () => { nativeFull = false; video.controls = false; setFull(false); };
+    const enter = () => { nativeFull = true; video.controls = true; setFullscreenMode('native'); };
+    const leave = () => { nativeFull = false; video.controls = false; setFullscreenMode(root && document.fullscreenElement === root ? 'custom' : 'inline'); };
     const sync = () => { if (document.fullscreenElement === video) enter(); else leave(); };
     document.addEventListener('fullscreenchange', sync);
     video.addEventListener('webkitbeginfullscreen', enter);
     video.addEventListener('webkitendfullscreen', leave);
+    sync();
     return () => {
       document.removeEventListener('fullscreenchange', sync);
       video.removeEventListener('webkitbeginfullscreen', enter);
@@ -129,22 +131,23 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
       if (nativeFull && 'webkitExitFullscreen' in video && typeof video.webkitExitFullscreen === 'function') {
         try { video.webkitExitFullscreen(); } catch { /* The browser may already have dismissed the player. */ }
       }
-      leave();
-      if (document.fullscreenElement === video) void document.exitFullscreen().catch(() => {});
+      video.controls = false;
+      if (document.fullscreenElement === video || document.fullscreenElement === root) void document.exitFullscreen().catch(() => {});
+      setFullscreenMode('inline');
     };
   }, [videoRef, sourceUrl]);
   const nativeCaptions = useRef<{ video: HTMLVideoElement; track: TextTrack } | null>(null);
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !full && !nativeCaptions.current) return;
+    if (!video || fullscreenMode !== 'native' && !nativeCaptions.current) return;
     if (nativeCaptions.current?.video !== video) nativeCaptions.current = { video, track: video.addTextTrack('subtitles', 'Subtitles') };
     const nativeTrack = nativeCaptions.current.track;
     nativeTrack.mode = 'hidden';
     for (const cue of Array.from(nativeTrack.cues || [])) nativeTrack.removeCue(cue);
     for (const cue of cues) nativeTrack.addCue(new VTTCue(cue.start, cue.end, cue.text));
-    nativeTrack.mode = full && cues.length ? 'showing' : 'disabled';
+    nativeTrack.mode = fullscreenMode === 'native' && cues.length ? 'showing' : 'disabled';
     return () => { nativeTrack.mode = 'disabled'; };
-  }, [full, cues, videoRef, sourceUrl]);
+  }, [fullscreenMode, cues, videoRef, sourceUrl]);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); notifyPartyControl(videoRef.current, 'seek'); } }
   function toggle() { togglePlayback(videoRef, onError); }
   async function pictureInPicture() {
@@ -162,15 +165,21 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     const video = videoRef.current;
     if (!video) return;
     setNote('');
+    const previousControls = video.controls;
     try {
-      if (document.fullscreenElement === video) await document.exitFullscreen();
+      const root = video.closest<HTMLElement>('.watch-content');
+      if (root && document.fullscreenElement === root || document.fullscreenElement === video) await document.exitFullscreen();
+      else if (fullscreenMode === 'native' && 'webkitExitFullscreen' in video && typeof video.webkitExitFullscreen === 'function') video.webkitExitFullscreen();
+      else if (root && document.fullscreenEnabled && typeof root.requestFullscreen === 'function') {
+        await root.requestFullscreen({ navigationUI: 'hide' });
+      }
       else {
         video.controls = true;
         if ('webkitEnterFullscreen' in video && typeof video.webkitEnterFullscreen === 'function') video.webkitEnterFullscreen();
         else await video.requestFullscreen();
       }
     } catch {
-      video.controls = false;
+      video.controls = previousControls;
       setNote('Fullscreen is unavailable in this browser.');
     }
   }
@@ -226,10 +235,10 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     {countdown!==null && <div className="next-countdown" role="status"><span>Next episode in {countdown}</span><button onClick={() => {setCountdown(null);next?.();}}>Play now</button><button onClick={() => setCountdown(null)}>Cancel</button></div>}
     {active && countdown===null && <button className="skip-segment" onClick={() => seek(active.end)}>{active.label}<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 2.5v11L11 8zM12 2.5h2v11h-2z"/></svg></button>}
       </div>
-      <div className="timeline" onPointerDown={event => { touchScrubbing.current = event.pointerType === 'touch'; }} onPointerUp={event => { if (event.pointerType !== 'mouse') { touchScrubbing.current = false; setScrub(null); } }} onLostPointerCapture={() => { touchScrubbing.current = false; setScrub(null); }} onPointerMove={event => { if (!duration || event.pointerType === 'touch' && !touchScrubbing.current) return; const bounds = event.currentTarget.getBoundingClientRect(); const rotated = window.matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)').matches; const position = Math.max(0, Math.min(1, ((rotated ? event.clientY - bounds.top : event.clientX - bounds.left) - 6) / ((rotated ? bounds.height : bounds.width) - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => { touchScrubbing.current = false; setScrub(null); }} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><div className="timeline-segments" aria-hidden="true">{(['intro', 'outro'] as const).map(kind => { const interval = skip[kind]; return interval ? <span key={kind} className={`timeline-segment timeline-segment-${kind}`} style={{ left: `${interval.start / duration * 100}%`, width: `${(interval.end - interval.start) / duration * 100}%` }} /> : null; })}</div><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}${active ? active.label === 'Skip opening' ? ', opening' : ', ending' : ''}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setScrub({ time, position: duration ? time / duration : 0 }); }} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); if (touchScrubbing.current || event.currentTarget.matches(':focus-visible')) setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
+      <div className="timeline" onPointerDown={event => { touchScrubbing.current = event.pointerType === 'touch'; }} onPointerUp={event => { if (event.pointerType !== 'mouse') { touchScrubbing.current = false; setScrub(null); } }} onLostPointerCapture={() => { touchScrubbing.current = false; setScrub(null); }} onPointerMove={event => { if (!duration || event.pointerType === 'touch' && !touchScrubbing.current) return; const bounds = event.currentTarget.getBoundingClientRect(); const rotated = !event.currentTarget.closest('.watch-content')?.matches(':fullscreen') && window.matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)').matches; const position = Math.max(0, Math.min(1, ((rotated ? event.clientY - bounds.top : event.clientX - bounds.left) - 6) / ((rotated ? bounds.height : bounds.width) - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => { touchScrubbing.current = false; setScrub(null); }} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><div className="timeline-segments" aria-hidden="true">{(['intro', 'outro'] as const).map(kind => { const interval = skip[kind]; return interval ? <span key={kind} className={`timeline-segment timeline-segment-${kind}`} style={{ left: `${interval.start / duration * 100}%`, width: `${(interval.end - interval.start) / duration * 100}%` }} /> : null; })}</div><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}${active ? active.label === 'Skip opening' ? ', opening' : ', ending' : ''}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setScrub({ time, position: duration ? time / duration : 0 }); }} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); if (touchScrubbing.current || event.currentTarget.matches(':focus-visible')) setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
       <div className="cinema-toolbar">
         <div className="transport">{icon(paused?'Play':'Pause',toggle,paused?<Play fill="currentColor"/>:<Pause fill="currentColor"/>,!sourceUrl)}<div className="volume-control">{icon(muted||!volume?'Unmute':'Mute',()=>{if(videoRef.current)videoRef.current.muted=!muted;},muted||!volume?<VolumeX/>:<Volume2/>)}<div className="volume-slider"><input style={{'--volume':`${(muted?0:volume)*100}%`} as React.CSSProperties} type="range" aria-label="Volume" aria-valuetext={`${Math.round((muted?0:volume)*100)}%`} min={0} max={1} step={0.05} value={muted?0:volume} onChange={event=>{if(videoRef.current){videoRef.current.volume=Number(event.target.value);videoRef.current.muted=false;}}}/><span className="volume-tooltip" aria-hidden="true" style={{left:`calc(${(muted?0:volume)*100}% + ${6-(muted?0:volume)*12}px)`}}>{Math.round((muted?0:volume)*100)}%</span></div></div></div>
-        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{document.pictureInPictureEnabled && <button type="button" className="cinema-icon" aria-label={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} title={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} aria-pressed={pip} disabled={!sourceUrl || !duration} onClick={() => void pictureInPicture()}><PictureInPicture2 aria-hidden="true"/></button>}{icon(full?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),full?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
+        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Up next &middot; Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong>{nextEpisode.title && <span>{nextEpisode.series}</span>}</div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{document.pictureInPictureEnabled && <button type="button" className="cinema-icon" aria-label={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} title={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} aria-pressed={pip} disabled={!sourceUrl || !duration} onClick={() => void pictureInPicture()}><PictureInPicture2 aria-hidden="true"/></button>}{icon(fullscreenMode !== 'inline'?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),fullscreenMode !== 'inline'?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
       </div>
     </div>
   </>;

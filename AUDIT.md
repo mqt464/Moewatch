@@ -1,3 +1,48 @@
+## Version 0.1.15 audit
+
+What this change does: Keeps Moewatch's player controls in element fullscreen wherever the browser supports it. Uses native video fullscreen when element fullscreen is unavailable.
+
+Reviewed every pending change and the connected player, watch dialog, subtitle, picture-in-picture, watchparty and release flows. Assumed one player per browser or desktop window, with optional trusted-LAN and watchparty clients.
+
+Must fix (resolved):
+
+1. **Portrait fullscreen uses the wrong scrub direction** ([CinemaControls.tsx](src/playback/CinemaControls.tsx))
+   - **What this is:** Portrait touch playback normally rotates the player to landscape.
+   - **Problem:** Element fullscreen removes the CSS rotation, but the scrub preview still reads vertical pointer movement.
+   - **Fix:** Read horizontal movement when the player is in element fullscreen. Added a portrait touch regression test.
+   - **If we skip it:** The preview timestamp does not match the point touched on the timeline.
+2. **Failed native exit disables playback controls** ([CinemaControls.tsx](src/playback/CinemaControls.tsx))
+   - **What this is:** Native video fullscreen uses the browser's playback controls.
+   - **Problem:** The error handler disables those controls if leaving fullscreen throws.
+   - **Fix:** Restore the previous controls value on failure. Added a native exit failure test.
+   - **If we skip it:** The video can remain fullscreen without playback controls.
+
+Should fix (resolved):
+
+3. **Overlapping fullscreen states** ([CinemaControls.tsx](src/playback/CinemaControls.tsx))
+   - **What this is:** The initial fix tracks fullscreen and native fullscreen with separate React state values.
+   - **Problem:** Every transition must update both values, and their types allow contradictory states.
+   - **Fix:** Use one inline/custom/native state value. Remove the duplicate state updates and redundant cleanup transition.
+   - **If we skip it:** Future entry or exit changes can leave subtitles, controls and the button out of sync.
+
+Changes included:
+- Prefer fullscreen on the complete player, with a request to hide browser navigation UI.
+- Fall back to native video fullscreen when element fullscreen is unavailable.
+- Keep custom controls, menus, subtitles and shortcuts in element fullscreen.
+- Enable native controls and subtitle tracks only during native video fullscreen.
+- Synchronize entry, browser-driven exit, button exit and source/unmount cleanup.
+- Reset fullscreen positioning and rotation to fill the display.
+- Fix portrait touch scrub previews and preserve controls after a failed fullscreen exit.
+- Replace overlapping fullscreen state values and redundant cleanup work.
+- Update fullscreen failure coverage and add element fullscreen, native fallback, portrait touch and exit failure coverage.
+- Bump npm, Tauri and Rust versions to 0.1.15.
+- Replace stale updater notes with this release's fullscreen changes.
+
+Validation: All 50 player browser tests passed. App/API tests passed 206, with two opt-in tests skipped. All seven relay tests passed. TypeScript and unused-code checks passed. Production frontend, Discord SDK load/credential self-test and compiled Bun sidecar passed during desktop preparation.
+
+Verdict: Ship.
+Not checked: Physical iOS/Android devices, interactive desktop fullscreen, installation and installed-client upgrade.
+
 ## Version 0.1.14 audit
 
 What this change does: Enables direct mKissa MP4 playback and downloads for sub and dub. Adds saved provider priority, a downloaded-title Library, a sleep timer and confirmation before unattended autoplay continues.
