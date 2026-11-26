@@ -74,7 +74,6 @@ export async function resolveGotakuServer(serverId: string, signal: AbortSignal)
 
 export const gotaku: AnimeProvider = {
   id, name: 'Gotaku', configured: true,
-  note: 'Hard-sub and dub servers are supported. Soft-sub captions are not exposed yet.',
   async search(query, signal) {
     signal.throwIfAborted();
     const q = query.trim();

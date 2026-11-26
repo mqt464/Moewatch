@@ -53,22 +53,17 @@ test('MKissa merges verified sub and dub episode lists and excludes unsupported 
   assert.deepEqual(idDecode(episodes[0].id, 'mkissa'), { titleId, episode: '1' });
 });
 
-test('MKissa keeps playback disabled and honors aborts and unsafe input', async t => {
+test('MKissa honors aborts and rejects unsafe episode and server IDs before fetching', async t => {
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('Unexpected fetch'); });
   const signal = new AbortController().signal;
   const aborted = AbortSignal.abort(new Error('Cancelled'));
   const episode = idEncode({ titleId, episode: '1' });
-  assert.equal(mkissa.configured, false);
+  assert.equal(mkissa.configured, true);
   await assert.rejects(mkissa.search('Bleach', aborted), { message: 'Cancelled' });
   await assert.rejects(mkissa.episodes('https://127.0.0.1', signal), { code: 'INVALID_REQUEST', provider: 'mkissa' });
   await assert.rejects(mkissa.servers(idEncode({ titleId, episode: '../1' }), signal), { code: 'INVALID_REQUEST' });
-  const bootstrapError = {
-    code: 'UPSTREAM_BLOCKED',
-    message: 'MKissa playback is blocked by a provider CAPTCHA; direct player resolution is pending.',
-    provider: 'mkissa'
-  };
-  await assert.rejects(mkissa.servers(episode, signal), bootstrapError);
-  await assert.rejects(mkissa.resolve('https://127.0.0.1/a.m3u8', signal), bootstrapError);
+  await assert.rejects(mkissa.resolve(episode, signal), { code: 'INVALID_REQUEST' });
+  await assert.rejects(mkissa.resolve('https://127.0.0.1/a.m3u8', signal), { code: 'INVALID_REQUEST' });
   await assert.rejects(mkissa.resolve('unused', aborted), { message: 'Cancelled' });
   assert.equal(fetchMock.mock.callCount(), 0);
 });

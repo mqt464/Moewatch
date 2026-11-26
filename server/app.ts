@@ -2,7 +2,7 @@ import { TtlCache } from './infrastructure/cache';
 import { createEpisodeMetadata } from './catalog/episodes';
 import { createServer as nodeServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { hostname, networkInterfaces } from 'node:os';
-import type { AnimeIdentity, AudioPreference, PlaybackAttempt, PlaybackRequest, ProviderPreference, ProviderAvailability, ProviderEpisode, ProviderServer } from '../shared/api';
+import type { ProviderId, AnimeIdentity, AudioPreference, PlaybackAttempt, PlaybackRequest, ProviderPreference, ProviderAvailability, ProviderEpisode, ProviderServer } from '../shared/api';
 import { canTryEpisodeAudio, providerIds } from '../shared/api';
 import { curated, type Anime } from '../src/catalog';
 import { createAniListCatalog, type Catalog } from './catalog/anilist';
@@ -71,7 +71,11 @@ function audioPreference(value: string | null): AudioPreference {
   throw new ApiError('INVALID_REQUEST', 'Invalid audio preference', 400);
 }
 
-function ordered(all: AnimeProvider[], selected: ProviderPreference = 'auto', fallback = true): AnimeProvider[] {
+function ordered(all: AnimeProvider[], selected: ProviderPreference = 'auto', fallback = true, priority: ProviderId[] = []): AnimeProvider[] {
+  all = [...all].sort((a, b) => {
+    const rank = (id: ProviderId) => priority.includes(id) ? priority.indexOf(id) : priority.length;
+    return rank(a.id) - rank(b.id);
+  });
   const configured = all.filter(provider => provider.configured);
   if (selected === 'auto') return fallback ? configured : configured.slice(0, 1);
   const first = all.find(provider => provider.id === selected);
@@ -89,7 +93,12 @@ function validatePlayback(value: unknown): PlaybackRequest {
   const audio = audioPreference(request.audio === undefined ? null : String(request.audio));
   if (request.serverId !== undefined && (typeof request.serverId !== 'string' || !request.serverId || request.serverId.length > 8192 || !provider || provider === 'auto')) throw new ApiError('INVALID_REQUEST', 'A server ID requires a specific provider', 400);
   if (request.fallback !== undefined && typeof request.fallback !== 'boolean') throw new ApiError('INVALID_REQUEST', 'Invalid fallback flag', 400);
-  return { animeId, episode, provider, serverId: request.serverId as string | undefined, audio, fallback: request.fallback as boolean | undefined };
+  let providerOrder: ProviderId[] | undefined;
+  if (request.providerOrder !== undefined) {
+    if (!Array.isArray(request.providerOrder) || request.providerOrder.length > providerIds.length || !request.providerOrder.every((id: unknown) => providerIds.some(known => known === id)) || new Set(request.providerOrder).size !== request.providerOrder.length) throw new ApiError('INVALID_REQUEST', 'Invalid provider order', 400);
+    providerOrder = request.providerOrder;
+  }
+  return { animeId, episode, provider, providerOrder, serverId: request.serverId as string | undefined, audio, fallback: request.fallback as boolean | undefined };
 }
 
 export function createApiHandler(options: AppOptions = {}) {
@@ -190,7 +199,7 @@ export function createApiHandler(options: AppOptions = {}) {
     if (!anime) throw new ApiError('NOT_FOUND', 'Anime not found', 404);
     const attempts: PlaybackAttempt[] = [];
     const audio = request.audio ?? 'sub';
-    const candidates = ordered(all, request.provider, request.fallback !== false);
+    const candidates = ordered(all, request.provider, request.fallback !== false, request.providerOrder);
     if (!candidates.length) throw new ApiError('UNAVAILABLE', 'No configured providers', 503);
     for (const provider of candidates) {
       if (deadline.aborted) break;

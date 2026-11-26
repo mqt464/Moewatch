@@ -1,7 +1,7 @@
 {
   "name": "moewatch",
   "private": true,
-  "version": "0.1.13",
+  "version": "0.1.14",
   "type": "module",
   "scripts": {
     "discord:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-discord.ps1",

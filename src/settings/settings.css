@@ -120,3 +120,32 @@ html[data-reduce-motion='true'] .button:active, html[data-reduce-motion='true'] 
 .settings-provider-name img { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; border-radius: 4px; }
 
 .settings-action { border: 0; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+
+.provider-priority-list { display: flex; flex-direction: column; overflow: hidden; border-radius: 10px; }
+.provider-priority-row { flex-shrink: 0; position: relative; background: var(--panel, #171719); }
+.provider-priority-row + .provider-priority-row { border-top: 1px solid var(--line); }
+.provider-priority-row[data-dragging] { z-index: 2; box-shadow: 0 8px 24px #0004; }
+.provider-drag-handle { position: relative; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: grab; touch-action: none; }
+.provider-drag-handle:active { cursor: grabbing; }
+.provider-drag-handle img, .provider-drag-handle svg { grid-area: 1 / 1; transition: opacity 125ms ease; }
+.provider-drag-handle svg { opacity: 0; }
+.provider-drag-handle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.provider-drag-handle:focus-visible img, [data-dragging] .provider-drag-handle img { opacity: 0; }
+.provider-drag-handle:focus-visible svg, [data-dragging] .provider-drag-handle svg { opacity: 1; }
+.provider-status-bars { display: flex; gap: 3px; color: #92929c; }
+.provider-status-bars i { display: block; width: 3px; height: 17px; border-radius: 2px; background: currentColor; }
+.provider-status-configured { color: #4caf83; }
+.provider-status-unavailable { color: #dc6868; }
+.provider-status-checking { color: #c5a65b; }
+.provider-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (hover: hover) and (pointer: fine) {
+  .provider-priority-row:hover .provider-drag-handle img { opacity: 0; }
+  .provider-priority-row:hover .provider-drag-handle svg { opacity: 1; }
+}
+@media (hover: none) {
+  .provider-drag-handle img { opacity: 0; }
+  .provider-drag-handle svg { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .provider-drag-handle img, .provider-drag-handle svg { transition-duration: 100ms; }
+}

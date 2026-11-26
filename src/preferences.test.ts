@@ -48,3 +48,9 @@ test('download quality defaults to 720p and accepts only supported resolutions',
   for (const quality of [480, 720, 1080]) assert.equal(readPreferences(JSON.stringify({ downloadQuality: quality })).downloadQuality, quality);
   for (const quality of [0, 2160, '720', null]) assert.equal(readPreferences(JSON.stringify({ downloadQuality: quality })).downloadQuality, 720);
 });
+
+test('provider priority preserves order and repairs stale or duplicate entries', () => {
+  const result = readPreferences(JSON.stringify({ providerOrder: ['miruro', 'unknown', 'miruro', 'anikoto'] }));
+  assert.deepEqual(result.providerOrder, ['miruro', 'anikoto', 'reanime', 'anipm', 'gotaku', 'mkissa']);
+  assert.deepEqual(readPreferences('{"providerOrder":"miruro"}').providerOrder, defaultPreferences.providerOrder);
+});

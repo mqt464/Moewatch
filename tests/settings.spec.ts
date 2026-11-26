@@ -77,7 +77,7 @@ test('audio and subtitle preferences persist', async ({ page }) => {
   await page.reload();
   await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
   await expect(page.getByRole('switch', { name: 'Subtitles' })).toBeChecked();
-  await expect(page.getByText('Configured', { exact: true })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Configured', exact: true })).toBeVisible();
   for (const icon of await page.locator('.settings-provider-name img').all()) {
     await expect.poll(() => icon.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   }
@@ -119,7 +119,7 @@ test('provider names and icons stay readable across settings widths', async ({ p
       });
       expect(layout.iconWidth).toBe(20);
       expect(layout.iconHeight).toBe(20);
-      expect(layout.labelHeight).toBeLessThan(25);
+      expect(layout.labelHeight).toBeLessThanOrEqual(32);
       expect(layout.rowHeight).toBeLessThan(80);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

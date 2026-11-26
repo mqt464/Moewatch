@@ -1,9 +1,9 @@
 import { defaultHomeLayout, readHomeLayout } from './homeLayout';
 export const preferencesKey = 'moewatch-settings-v1';
-import { providerIds, type AudioPreference, type ProviderPreference } from '../shared/api';
+import { providerIds, type AudioPreference, type ProviderId, type ProviderPreference } from '../shared/api';
 import type { DownloadQuality } from '../shared/downloads';
 
-export const defaultPreferences = { homeLayout: defaultHomeLayout, discordRpc: true, discordWatchParty: true, showYears: false, reduceMotion: false, provider: 'auto' as ProviderPreference, audio: 'sub' as AudioPreference, providerFallback: true, subtitles: false, volume: 1, muted: false, downloadQuality: 720 as DownloadQuality };
+export const defaultPreferences = { homeLayout: defaultHomeLayout, providerOrder: [...providerIds] as ProviderId[], discordRpc: true, discordWatchParty: true, showYears: false, reduceMotion: false, provider: 'auto' as ProviderPreference, audio: 'sub' as AudioPreference, providerFallback: true, subtitles: false, volume: 1, muted: false, downloadQuality: 720 as DownloadQuality };
 export type Preferences = typeof defaultPreferences;
 
 export function readPreferences(raw: string | null): Preferences {
@@ -12,6 +12,7 @@ export function readPreferences(raw: string | null): Preferences {
     if (!value || typeof value !== 'object') return { ...defaultPreferences };
     return {
       homeLayout: readHomeLayout(value.homeLayout),
+      providerOrder: [...new Set<ProviderId>([...(Array.isArray(value.providerOrder) ? value.providerOrder.filter((id: unknown): id is ProviderId => providerIds.some(known => known === id)) : []), ...providerIds])],
       discordRpc: typeof value.discordRpc === 'boolean' ? value.discordRpc : defaultPreferences.discordRpc,
       discordWatchParty: typeof value.discordWatchParty === 'boolean' ? value.discordWatchParty : defaultPreferences.discordWatchParty,
       downloadQuality: [480, 720, 1080].includes(value.downloadQuality) ? value.downloadQuality : defaultPreferences.downloadQuality,

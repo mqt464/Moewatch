@@ -35,6 +35,7 @@ import { WatchPlayer } from './playback/WatchPlayer';
 import { WatchpartyProvider } from './playback/Watchparty';
 import { availableEpisodes, useAvailability } from './playback/availability';
 import { DownloadsProvider, useDownloads } from './downloads/DownloadsContext';
+import { downloadedTitles } from './downloadLibrary';
 import { DownloadButton, DownloadsPopover } from './downloads/Downloads';
 import './motion.css';
 
@@ -62,7 +63,8 @@ function Artwork({ src, alt = '', className = '', eager = false, fallback }: { s
 }
 
 function Header() {
-
+  const { data } = useDownloads();
+  const hasDownloads = downloadedTitles(data?.downloads ?? []).length > 0;
   return <>
     <a className="skip-link" href="#main">Skip to content</a>
     <header className="header">
@@ -74,6 +76,7 @@ function Header() {
         <NavLink to="/" end>Discover</NavLink>
         <NavLink to="/browse">Search</NavLink>
         <NavLink to="/list">My List</NavLink>
+        {hasDownloads && <NavLink to="/library">Library</NavLink>}
       </nav>
       <div className="header-actions"><DownloadsPopover /><ProfileMenu /></div>
     </header>
@@ -304,6 +307,17 @@ function Browse() {
   return <div className="content-wrap page-content"><h1 className="page-title">Search</h1><form className="search-form" role="search" onSubmit={event => { event.preventDefault(); updateParam('search', input.trim()); }}><Search aria-hidden="true" size={21} /><label className="sr-only" htmlFor="anime-search">Search anime</label><input id="anime-search" name="search" type="search" autoComplete="off" placeholder="Search anime…" value={input} onChange={event => setInput(event.target.value)} autoFocus={params.has('search') && window.matchMedia('(min-width: 761px)').matches} />{input && <button type="button" className="icon-button" aria-label="Clear search" onClick={() => { setInput(''); updateParam('search', ''); }}><X aria-hidden="true" size={18} /></button>}<button type="submit" className="button primary">Search</button></form><div className="browse-toolbar"><div className="genre-options" aria-label="Filter by genre">{['', 'Action', 'Adventure', 'Drama', 'Fantasy', 'Romance', 'Slice of Life', 'Sci-Fi'].map(value => <button key={value} className={genre === value ? 'selected' : ''} aria-pressed={genre === value} onClick={() => updateParam('genre', value)}>{value || 'All genres'}</button>)}</div></div><div className="results-heading"><h2>{resultQuery?.search ? `Results for “${resultQuery.search}”` : resultQuery?.genre || 'Anime'}</h2><span role="status" aria-live="polite">{pending ? 'Loading…' : `${items.length} titles${offline ? ' · cached' : ''}`}</span></div>{offline && <div className="notice" role="status"><Info aria-hidden="true" size={18} /><p>AniList unavailable. Showing cached titles.</p><button onClick={() => setRetry(value => value + 1)}>Retry</button></div>}<div className="search-results" aria-busy={pending}><Skeleton id="browse-results" data={items.length || !pending ? items : null} sample={curated.slice(0, 6)} loading={pending && !resultQuery} label="Loading anime">{results => results.length ? <div className="poster-grid">{results.map(anime => <Poster key={anime.id} anime={anime} showYear />)}</div> : <Empty title="No results" action="Reset filters" to="/browse" />}</Skeleton></div></div>;
 }
 
+function DownloadLibrary() {
+  const { data, loading, error } = useDownloads();
+  const { library } = useLibrary();
+  const titles = downloadedTitles(data?.downloads ?? []);
+  return <div className="content-wrap page-content">
+    <h1 className="page-title">Library</h1>
+    {loading ? <p role="status">Loading downloads…</p> : titles.length ? <div className="poster-grid saved-grid">{titles.map(anime => <Poster key={anime.id} anime={anime} progress={library.progress.find(item => item.anime.id === anime.id)} />)}</div> : <Empty title="No downloaded anime" action="Search anime" to="/browse" />}
+    {error && <p role="alert">{error}</p>}
+  </div>;
+}
+
 function MyList() {
   const { library } = useLibrary();
   const groups = [
@@ -443,6 +457,7 @@ const router = createBrowserRouter([{ element: <WatchpartyProvider><App /></Watc
   { path: '/', element: <><title>Discover — Moewatch</title><Home /></> },
   { path: '/browse', element: <><title>Search — Moewatch</title><Browse /></> },
   { path: '/list', element: <><title>My List — Moewatch</title><MyList /></> },
+  { path: '/library', element: <><title>Library — Moewatch</title><DownloadLibrary /></> },
   { path: '/settings/:section?', element: <><title>Settings — Moewatch</title><SettingsPage /></> },
   { path: '/anime/:id', element: <Series /> },
   { path: '/watch/:id/:episode', element: <Watch /> },

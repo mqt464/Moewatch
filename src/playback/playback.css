@@ -30,6 +30,15 @@
 .cinema-bottom > * { pointer-events: auto; }
 .cinema-bottom.has-panel { z-index: 7; }
 
+.watch-check { width: min(360px, calc(100% - 40px)); max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; padding: 24px; border: 1px solid #ffffff18; border-radius: 18px; background: #181719f7; color: #f5f3f2; box-shadow: 0 24px 80px #0009; text-align: center; }
+.watch-check::backdrop { background: #000a; backdrop-filter: blur(8px); }
+.watch-check img { display: block; width: 140px; height: auto; max-height: 30dvh; object-fit: contain; margin: 0 auto 16px; }
+.watch-check h2 { margin: 0 0 24px; font-size: 22px; font-weight: 600; letter-spacing: -.025em; }
+.watch-check .language-options { flex-direction: column; gap: 8px; }
+.watch-check .language-options button:first-child { background: #e7a0b4; border-color: #e7a0b4; color: #171317; font-weight: 600; }
+.watch-check .language-options button:last-child { background: transparent; border-color: transparent; color: #d4cfd4; }
+.watch-check .language-options button:hover { filter: brightness(1.12); }
+
 .cinema-bottom.is-idle { opacity: 0; }
 
 .controls-hidden { cursor: none; }

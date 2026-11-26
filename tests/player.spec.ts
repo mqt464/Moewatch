@@ -137,8 +137,9 @@ test('minimal settings preserve provider, server and autonext behavior',async({p
  const menu=page.getByRole('region',{name:'Playback settings'});
  await expect(menu.getByRole('heading')).toHaveCount(0);
  await expect(menu.getByRole('button')).toHaveCount(0);
- await expect(menu.getByRole('combobox')).toHaveCount(2);
+ await expect(menu.getByRole('combobox')).toHaveCount(3);
  await expect(menu.getByRole('combobox',{name:'Provider',exact:true})).toBeVisible();
+ await expect(menu.getByRole('combobox',{name:'Sleep timer',exact:true})).toBeVisible();
  const request=page.waitForRequest(r=>r.url().endsWith('/playback') && r.postDataJSON().serverId==='backup');
  await page.getByRole('combobox',{name:'Server',exact:true}).selectOption('backup');
  expect((await request).postDataJSON()).toMatchObject({provider:'anikoto',serverId:'backup'});
@@ -907,4 +908,44 @@ test('watchparty readiness stays below the spinner and playback waits for the gr
   });
   await expect(page.locator('.party-readiness')).toHaveCount(0);
   await expect(page.locator('.player-shell video')).toHaveJSProperty('paused', false);
+});
+
+test('sleep timer pauses playback, cancels autoplay and resumes only on confirmation', async ({ page }) => {
+ await page.clock.install();
+ await fixture(page);
+ await page.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await page.getByLabel('Sleep timer', { exact: true }).selectOption('15');
+ await expect(page.getByLabel('Sleep timer', { exact: true })).toContainText('15 min left');
+ await page.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await page.locator('video').evaluate(video => video.dispatchEvent(new Event('ended')));
+ await expect(page.locator('.next-countdown')).toBeVisible();
+ await page.clock.fastForward(15 * 60_000);
+ const dialog = page.getByRole('dialog', { name: 'Sleep timer finished' });
+ await expect(dialog).toBeVisible();
+ await expect(dialog.locator('img')).toHaveAttribute('src', '/error-mascot.png');
+ await expect(page.locator('.next-countdown')).toHaveCount(0);
+ await expect.poll(() => page.locator('video').evaluate(video => video.paused)).toBe(true);
+ await dialog.getByRole('button', { name: 'Keep watching' }).click();
+ await expect(dialog).toHaveCount(0);
+ await expect.poll(() => page.locator('video').evaluate(video => video.paused)).toBe(false);
+});
+
+test('unattended playback requires confirmation before another episode', async ({ page }) => {
+ await fixture(page);
+ await page.evaluate(async () => {
+   const modulePath = '/src/playback/watchSession.ts';
+   const { watchSession } = await import(modulePath);
+   watchSession.unattendedMs = 90 * 60_000;
+ });
+ await page.locator('video').evaluate(video => video.dispatchEvent(new Event('ended')));
+ const dialog = page.getByRole('dialog', { name: 'Still watching?' });
+ await expect(dialog).toBeVisible();
+ await expect(dialog.getByRole('button', { name: 'Keep watching' })).toBeFocused();
+ await expect(page.locator('.next-countdown')).toHaveCount(0);
+ await page.keyboard.press('Escape');
+ await expect(dialog).toBeVisible();
+ await dialog.getByRole('button', { name: 'Stop watching' }).click();
+ await expect(dialog).toHaveCount(0);
+ await expect(page).toHaveURL(/\/1$/);
+ await expect.poll(() => page.locator('video').evaluate(video => video.paused)).toBe(true);
 });

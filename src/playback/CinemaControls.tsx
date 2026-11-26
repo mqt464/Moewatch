@@ -1,5 +1,5 @@
 import { usePresence } from '../motion';
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings2, Captions, SkipForward, PictureInPicture2 } from 'lucide-react';
 import type { AudioPreference, SkipInterval, SkipTimesResponse, SubtitleTrack } from '../../shared/api';
 import { apiRequest } from '../api';
@@ -9,6 +9,8 @@ import { mergeSkipIntervals } from './skipIntervals';
 import { ScrubPreview } from './ScrubPreview';
 import { togglePlayback } from './Player';
 import { notifyPartyControl } from './partyPlayback';
+import { needsWatchCheck, recordActivity, watchSession } from './watchSession';
+import { useWatchSession } from './useWatchSession';
 
 export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro, outro, tracks, audio, audioAvailable, onAudioChange, animeId, episode, next, nextEpisode, local, children, onError, partyControls }: { videoRef: RefObject<HTMLVideoElement | null>; sourceUrl?: string; sourceType?: 'mp4' | 'webm' | 'hls'; intro?: SkipInterval; outro?: SkipInterval; tracks: SubtitleTrack[]; audio: AudioPreference; audioAvailable: Record<AudioPreference, boolean>; onAudioChange: (audio: AudioPreference) => void; animeId: number; episode: number; next?: () => void; nextEpisode?: { number: number; title?: string; image: string; series: string }; local: boolean; children: ReactNode; onError: (message: string) => void; partyControls?: ReactNode }) {
   const { preferences, update } = usePreferences();
@@ -17,6 +19,36 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   const [panel, setPanel] = useState(''), [cues, setCues] = useState<Cue[]>([]), [full, setFull] = useState(false), [note, setNote] = useState('');
   const [fallback, setFallback] = useState<{ key: string; value: SkipTimesResponse } | null>(null), [autoNext, setAutoNext] = useState(() => { try { return localStorage.getItem('moewatch-autonext') !== 'false'; } catch { return true; } });
   const [countdown, setCountdown] = useState<number | null>(null), [idle, setIdle] = useState(false);
+  const [watchPrompt, setWatchPrompt] = useState<'still' | 'sleep' | null>(null);
+  const watchDialog = useRef<HTMLDialogElement>(null);
+  const resumeRequested = useRef(false);
+  const sleep = useCallback(() => { setCountdown(null); setPanel(''); setWatchPrompt('sleep'); }, []);
+  const { sleepUntil, minutesLeft, setSleepTimer } = useWatchSession(videoRef, sourceUrl, sleep);
+  useEffect(() => {
+    if (!watchPrompt) {
+      if (resumeRequested.current) {
+        resumeRequested.current = false;
+        if (videoRef.current?.ended && nextRef.current) nextRef.current();
+        else if (videoRef.current) void videoRef.current.play().catch(() => onError('Playback could not start. Try again.'));
+      }
+      return;
+    }
+    const dialog = watchDialog.current;
+    const video = videoRef.current;
+    const pause = () => video?.pause();
+    pause();
+    video?.addEventListener('play', pause);
+    dialog?.showModal();
+    if (document.pictureInPictureElement === video) void document.exitPictureInPicture().catch(() => {});
+    if (document.fullscreenElement === video) void document.exitFullscreen().catch(() => {});
+    if (video && 'webkitExitFullscreen' in video && typeof video.webkitExitFullscreen === 'function') video.webkitExitFullscreen();
+    return () => { video?.removeEventListener('play', pause); dialog?.close(); };
+  }, [watchPrompt, videoRef, sourceUrl]);
+  function keepWatching() {
+    recordActivity(watchSession);
+    resumeRequested.current = true;
+    setWatchPrompt(null);
+  }
   const [remaining, setRemaining] = useState(false);
   const [pip, setPip] = useState(false);
   useEffect(() => {
@@ -52,11 +84,16 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   useEffect(() => {
     const element = videoRef.current; if (!element) return;
     const sync = () => { setTime(element.currentTime); setDuration(Number.isFinite(element.duration) ? element.duration : 0); setPaused(element.paused); setVolume(element.volume); setMuted(element.muted); setBuffered(element.buffered.length ? element.buffered.end(element.buffered.length-1) : 0); };
-    const ended = () => { if (autoNext && nextRef.current && !local) setCountdown(5); };
+    const ended = () => {
+      if (!autoNext || !nextRef.current || local) return;
+      if (watchSession.sleepUntil && Date.now() >= watchSession.sleepUntil) { sleep(); return; }
+      if (needsWatchCheck(watchSession, animeId + '/' + episode)) { setPanel(''); setWatchPrompt('still'); }
+      else setCountdown(5);
+    };
     const events = ['timeupdate','loadedmetadata','play','pause','volumechange','progress','seeking'];
     events.forEach(event => element.addEventListener(event,sync)); element.addEventListener('ended',ended); sync();
     return () => { events.forEach(event => element.removeEventListener(event,sync)); element.removeEventListener('ended',ended); };
-  }, [videoRef, sourceUrl, autoNext, local]);
+  }, [videoRef, sourceUrl, autoNext, local, animeId, episode, sleep]);
   const skipKey = JSON.stringify([animeId, episode, audio, sourceUrl, duration]);
   const providerSkip = mergeSkipIntervals(duration, local || !sourceUrl ? {} : { intro, outro });
   const skip = mergeSkipIntervals(duration, providerSkip, !local && fallback?.key === skipKey ? fallback.value : {});
@@ -139,7 +176,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   }
   useEffect(() => {
     const key=(event:KeyboardEvent) => {
-      if (videoRef.current?.controls) return;
+      if (watchPrompt || videoRef.current?.controls) return;
       if (event.key==='Escape' && panel) { setPanel(''); document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus(); return; }
       if (event.target instanceof HTMLElement && (event.target.closest('button,a,input,select,textarea') || event.target.isContentEditable)) return;
       if (event.key===' ' || event.key==='k') { event.preventDefault(); toggle(); }
@@ -157,15 +194,23 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     return () => {clearTimeout(timer.current);root?.removeEventListener('pointermove',wake);root?.removeEventListener('pointerdown',wake);root?.removeEventListener('keydown',wake);root?.removeEventListener('focusin',wake);};
   },[videoRef,sourceUrl]);
   const active=skip.intro && time>=skip.intro.start && time<skip.intro.end ? {label:'Skip opening',...skip.intro} : skip.outro && time>=skip.outro.start && time<skip.outro.end ? {label:'Skip ending',...skip.outro} : null;
-  const hidden=idle && !scrub && !paused && !renderedPanel && countdown===null;
+  const hidden=idle && !scrub && !paused && !renderedPanel && countdown===null && !watchPrompt;
   useEffect(() => {const root=videoRef.current?.closest('.watch-content');root?.classList.toggle('controls-hidden',hidden);return () => root?.classList.remove('controls-hidden');},[hidden,videoRef]);
   const icon=(label:string,action:()=>void,child:ReactNode,disabled=false) => <button type="button" className={'cinema-icon'+(label==='Fullscreen'||label==='Exit fullscreen'?' fullscreen-control':'')} aria-label={label} title={label} onClick={action} disabled={disabled}>{child}{label==='Next episode'?<span className="control-caption">Next</span>:label==='Fullscreen'||label==='Exit fullscreen'?<span className="control-caption">Fullscreen</span>:null}</button>;
   return <>
+    {watchPrompt && <dialog ref={watchDialog} className="watch-check" aria-labelledby="watch-check-title" onCancel={event => event.preventDefault()} onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+      <img src="/error-mascot.png" alt="" width="180" height="188" />
+      <h2 id="watch-check-title">{watchPrompt === 'sleep' ? 'Sleep timer finished' : 'Still watching?'}</h2>
+      <div className="language-options"><button type="button" autoFocus onClick={keepWatching}>Keep watching</button><button type="button" onClick={() => setWatchPrompt(null)}>Stop watching</button></div>
+    </dialog>}
     <div className="subtitle-overlay" role="group" aria-label="Subtitles">{cues.filter(cue => time>=cue.start && time<cue.end).map((cue,index) => <span key={index}>{cue.text}</span>)}</div>
     <div className={'cinema-bottom'+(hidden?' is-idle':'')+(renderedPanel?' has-panel':'')} inert={hidden} aria-hidden={hidden}>
       {note && <p role="status">{note}</p>}
       {renderedPanel && <section {...presence} ref={panelRef} className={"cinema-panel"+(renderedPanel==='subtitles'?' subtitle-panel':'')+(!panel?' is-closing':'')} aria-label={renderedPanel==='settings'?'Playback settings':'Subtitle settings'} onKeyDown={event => {if(event.key==='Escape'){setPanel('');document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus();}}}>
-        {renderedPanel==='settings'? <>{children}<div className="player-options"><label className="autonext-option"><input type="checkbox" checked={autoNext} disabled={local} onChange={event=>{setAutoNext(event.target.checked);setCountdown(null);try{localStorage.setItem('moewatch-autonext',String(event.target.checked));}catch{/* Playback remains usable without storage. */}}}/>Autonext</label></div></>: <>
+        {renderedPanel==='settings'? <>{children}<div className="player-options"><label className="autonext-option"><input type="checkbox" checked={autoNext} disabled={local} onChange={event=>{setAutoNext(event.target.checked);setCountdown(null);try{localStorage.setItem('moewatch-autonext',String(event.target.checked));}catch{/* Playback remains usable without storage. */}}}/>Autonext</label><label>Sleep timer<select aria-label="Sleep timer" value={sleepUntil ? 'active' : '0'} onChange={event => setSleepTimer(Number(event.target.value))}>
+            {sleepUntil > 0 && <option value="active" disabled>{minutesLeft} min left</option>}
+            <option value="0">Off</option>{[15,30,60,90,120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+          </select></label></div></>: <>
           <div className="language-choice" role="group" aria-label="Subtitles">
             <p>Subtitles</p>
             <div className="language-options">{[false,true].map(enabled=><button key={String(enabled)} type="button" aria-pressed={enabled?track>=0:track<0} disabled={enabled&&!tracks.length} onClick={()=>update({ subtitles: enabled })}>{enabled?'On':'Off'}</button>)}</div>

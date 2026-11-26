@@ -1,3 +1,49 @@
+## Version 0.1.14 audit
+
+What this change does: Enables direct mKissa MP4 playback and downloads for sub and dub. Adds saved provider priority, a downloaded-title Library, a sleep timer and confirmation before unattended autoplay continues.
+
+Reviewed all pending tracked and new files and connected playback, provider, preference and download flows. Assumed one desktop host with optional trusted-LAN clients.
+
+Should fix (resolved):
+
+1. **Unused iframe resolver** (server/extractors/mkissa-player.ts)
+   - **What this is:** The old Fm-Hls helper resolves an intermediate iframe.
+   - **Problem:** No production caller uses it; the enabled adapter supports direct MP4 sources.
+   - **Fix:** Removed the helper, its URL constants and three obsolete tests.
+   - **If we skip it:** An unused protocol still needs maintenance.
+2. **Repeated provider logic** (src/settings/ProviderRow.tsx, src/preferences.ts)
+   - **What this is:** Settings label provider status and repair saved priority lists.
+   - **Problem:** Status text is duplicated, and priority entries are deduplicated twice.
+   - **Fix:** Compute the status label once and use one Set for priority repair.
+   - **If we skip it:** Future edits can leave labels inconsistent and retain needless work.
+3. **Stale browser assertions** (tests/settings.spec.ts)
+   - **What this is:** Tests check provider configuration and row geometry.
+   - **Problem:** They expect removed text and a label shorter than the new 32px reorder button.
+   - **Fix:** Assert the accessible status icon and the current handle height.
+   - **If we skip it:** Correct settings behavior fails release checks.
+
+Additional fix: Rebind the watch-dialog pause guard when the media source changes.
+
+Changes included:
+- Enable build-193 mKissa bootstrap, signed encrypted episode requests, identity checks and fresh direct URL resolution.
+- Support Yt-mp4 and Mp4Upload sources, prioritize Yt-mp4 and restrict upstream media URLs.
+- Replace the old diagnostic with a bounded TypeScript direct-resolution probe; update provider documentation.
+- Add drag and keyboard provider reordering, persist repaired priorities and validate priority requests on the API.
+- Apply priority to automatic playback and fallback selection.
+- Add Library navigation and deduplicated title cards for completed downloads.
+- Add sleep timer, remaining time, unattended autoplay checks and explicit resume/stop dialogs.
+- Add provider crypto, URL safety, ordering, Library and watch-session tests and browser coverage.
+- Remove the redundant Gotaku settings note; retain its limitation in server documentation.
+- Remove unused iframe research code and duplicate status/preference work.
+- Bump npm, Tauri and Rust versions to 0.1.14.
+
+Validation: 206 app/API tests passed; two opt-in tests skipped. Seven relay tests passed. Production frontend, TypeScript unused-code checks, compiled Bun sidecar and isolated sidecar smoke test passed. All 68 affected browser tests passed.
+
+Local native packaging encountered a locked Discord bridge executable. The clean Windows release workflow builds and signs the installer. Interactive installation, installed-client upgrade, live provider playback and multi-client watchparty behavior were not manually repeated.
+
+Verdict: Ship after affected browser checks and release build pass.
+Lean: -56 net lines in the extractor and its tests compared with the previous commit.
+
 # Release audits
 
 ## Version 0.1.13 audit

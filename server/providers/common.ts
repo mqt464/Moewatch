@@ -41,10 +41,10 @@ export function sameOriginUrl(value: unknown, base: string, provider: ProviderId
   return new URL(url);
 }
 
-export async function request(url: string, provider: ProviderId, signal: AbortSignal, referer?: string): Promise<Response> {
+export async function request(url: string, provider: ProviderId, signal: AbortSignal, referer?: string, extraHeaders?: Record<string, string>): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(12000)]), redirect: 'error', headers: { 'User-Agent': userAgent, Accept: 'application/json, text/html, */*', ...(referer ? { Referer: referer } : {}), 'X-Requested-With': 'XMLHttpRequest' } });
+    response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(12000)]), redirect: 'error', headers: { 'User-Agent': userAgent, Accept: 'application/json, text/html, */*', ...(referer ? { Referer: referer } : {}), 'X-Requested-With': 'XMLHttpRequest', ...extraHeaders } });
   } catch (error) {
     if (signal.aborted) throw error;
     throw new ApiError(error instanceof DOMException && error.name === 'TimeoutError' ? 'TIMEOUT' : 'UPSTREAM_ERROR', 'Provider request failed', 502, provider);
@@ -97,8 +97,8 @@ export async function request(url: string, provider: ProviderId, signal: AbortSi
   return new Response(body, { status: response.status, headers });
 }
 
-export async function json(url: string, provider: ProviderId, signal: AbortSignal, referer?: string): Promise<unknown> {
-  const response = await request(url, provider, signal, referer);
+export async function json(url: string, provider: ProviderId, signal: AbortSignal, referer?: string, headers?: Record<string, string>): Promise<unknown> {
+  const response = await request(url, provider, signal, referer, headers);
   if (!response.headers.get('content-type')?.includes('json')) throw new ApiError('UPSTREAM_ERROR', 'Provider returned non-JSON response', 502, provider);
   try { return await response.json(); } catch { throw new ApiError('UPSTREAM_ERROR', 'Provider returned invalid JSON', 502, provider); }
 }

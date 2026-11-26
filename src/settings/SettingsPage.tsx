@@ -6,11 +6,12 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAccount } from '../AccountContext';
 import { usePreferences } from '../PreferencesContext';
-import { fetchProviders, providerNames, providerIcons } from '../api';
-import { providerIds, type AudioPreference, type ProviderStatus } from '../../shared/api';
+import { fetchProviders } from '../api';
+import { type AudioPreference, type ProviderStatus } from '../../shared/api';
 import { ScrollArea } from '../ScrollArea';
 import { SettingRow, SettingsButton, SettingsCard, SettingsNotice, SettingsSelect, SettingsToggle } from './controls';
 import { version } from '../../package.json';
+import { ProviderRow } from './ProviderRow';
 import { DownloadSettings } from '../downloads/DownloadSettings';
 
 const pages = [
@@ -58,10 +59,12 @@ function PlaybackSettings() {
     <section aria-labelledby="provider-status-heading">
       <h2 id="provider-status-heading" className="settings-provider-heading">Provider status</h2>
       <SettingsCard>
-      {providerIds.map(id => {
+      <div className="provider-priority-list">
+      {preferences.providerOrder.map(id => {
         const provider = providers.find(entry => entry.id === id);
-        return <SettingRow key={id} description={provider?.note} title={<span className="settings-provider-name"><img src={providerIcons[id]} alt="" width={20} height={20} />{providerNames[id]}</span>}><span className="setting-value">{loading ? 'Checking...' : error ? 'Unknown' : provider?.configured ? 'Configured' : 'Unavailable'}</span></SettingRow>;
+        return <ProviderRow key={id} id={id} order={preferences.providerOrder} note={provider?.note} status={loading ? 'checking' : error ? 'unknown' : provider?.configured ? 'configured' : 'unavailable'} onChange={providerOrder => update({ providerOrder })} />;
       })}
+      </div>
       </SettingsCard>
       {error && <SettingsNotice error>{error}</SettingsNotice>}
     </section>

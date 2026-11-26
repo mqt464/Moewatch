@@ -7,7 +7,7 @@ import type { SubtitleTrack } from '../../shared/api';
 import type { Anime } from '../catalog';
 import type { Progress } from '../library';
 import { usePreferences } from '../PreferencesContext';
-import { providerIds, type AudioPreference, type PlaybackResponse, type PlaybackSource, type ProviderPreference, type ProviderServer } from '../../shared/api';
+import { type AudioPreference, type PlaybackResponse, type PlaybackSource, type ProviderPreference, type ProviderServer } from '../../shared/api';
 import { availableEpisodes, useAvailability } from './availability';
 import { canResume, Player, togglePlayback } from './Player';
 import './playback.css';
@@ -78,12 +78,12 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     if (localSource || downloaded || downloadsLoading || availability.loading || !playable) { setLoading(false); return; }
     const controller = new AbortController();
     setLoading(true); setError(''); setPlayback(null);
-    resolvePlayback({ animeId: anime.id, episode, provider, audio, fallback: preferences.providerFallback, ...(serverId ? { serverId } : {}) }, controller.signal)
+    resolvePlayback({ animeId: anime.id, episode, provider, providerOrder: preferences.providerOrder, audio, fallback: preferences.providerFallback, ...(serverId ? { serverId } : {}) }, controller.signal)
       .then(result => { if (!controller.signal.aborted) { setPlayback(result); setBuffering(true); } })
       .catch(() => { if (!controller.signal.aborted) setError('No playable source found. Try another server.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [anime.id, episode, provider, audio, serverId, preferences.providerFallback, playable, availability.loading, localSource, revision, downloaded?.sources[0]?.url, downloadsLoading]);
+  }, [anime.id, episode, provider, audio, serverId, preferences.providerFallback, preferences.providerOrder, playable, availability.loading, localSource, revision, downloaded?.sources[0]?.url, downloadsLoading]);
 
   const selectedProvider = provider === 'auto' ? playback?.provider : provider;
   useEffect(() => {
@@ -149,7 +149,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     
     <CinemaControls partyControls={party.status.active || party.status.members.length > 1 ? <PartyAvatars members={party.status.members} onLeave={party.leave} /> : undefined} intro={effectivePlayback?.intro} outro={effectivePlayback?.outro} onError={reportError} nextEpisode={nextEpisode ? { number: nextEpisode, title: nextArtwork?.title, image: nextArtwork?.thumbnail || anime.banner || anime.cover, series: anime.title } : undefined} audio={audio} audioAvailable={audioAvailable} onAudioChange={chooseAudio} videoRef={video} sourceUrl={source?.url} sourceType={source?.type} tracks={localSource ? noTracks : effectivePlayback?.subtitles || noTracks} animeId={anime.id} episode={episode} local={Boolean(localSource)} next={nextEpisode ? () => { save(true); party.next(nextEpisode); navigate(`/watch/${anime.id}/${nextEpisode}`, { state: { autoplay: true } }); } : undefined}>
     <div className="source-controls" aria-label="Playback sources">
-      <label>Provider<select disabled={Boolean(localSource || downloaded)} value={provider} onChange={event => chooseProvider(event.target.value as ProviderPreference)}><option value="auto">Automatic</option>{providerIds.map(id => { const available = availableEpisodes(availability.data, audio, id).includes(episode); return <option key={id} value={id} disabled={!available}>{providerNames[id]}{availability.loading ? ' (Checking...)' : !available ? ' (Unavailable)' : ''}</option>; })}</select></label>
+      <label>Provider<select disabled={Boolean(localSource || downloaded)} value={provider} onChange={event => chooseProvider(event.target.value as ProviderPreference)}><option value="auto">Automatic</option>{preferences.providerOrder.map(id => { const available = availableEpisodes(availability.data, audio, id).includes(episode); return <option key={id} value={id} disabled={!available}>{providerNames[id]}{availability.loading ? ' (Checking...)' : !available ? ' (Unavailable)' : ''}</option>; })}</select></label>
       <label>Server<select disabled={!servers.length || Boolean(localSource)} value={serverId || playback?.server.id || ''} onChange={event => { save(true); setError(''); setPlayback(null); if (provider === 'auto' && selectedProvider) setProvider(selectedProvider); setServerId(event.target.value); }}><option value="">Automatic</option>{servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}</select></label>
     </div>
 

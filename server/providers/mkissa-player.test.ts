@@ -1,48 +1,44 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resolveMkissaPlayerEmbed } from '../extractors/mkissa-player';
+import { mkissaMp4UploadEmbed, resolveMkissaMp4Upload } from '../extractors/mkissa-player';
 
 const signal = new AbortController().signal;
-const embed = 'https://bysekoze.com/e/AbC_012';
-const frame = 'https://n1mwq.org/player/def012';
+const mp4Embed = 'https://mp4upload.com/embed-abcdefgh1234.html';
+const media = `https://a1.mp4upload.com:183/d/${'a'.repeat(64)}/video.mp4`;
 
-test('MKissa Fm-Hls resolves the public iframe from Byse embed details', async t => {
+test('MKissa Mp4 extracts a literal source through the canonical embed without executing scripts', async t => {
   const fetch = t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
-    assert.equal(url, 'https://bysekoze.com/api/videos/AbC_012/embed/details');
+    assert.equal(url, 'https://www.mp4upload.com/embed-abcdefgh1234.html');
     assert.equal(init.redirect, 'error');
-    assert.equal(new Headers(init.headers).get('Referer'), embed);
-    return Response.json({ code: 'AbC_012', owner_private: false, embed_frame_url: frame });
+    assert.equal(new Headers(init.headers).get('Referer'), 'https://filelotion.fyi/');
+    return new Response(`<script>throw Error('never run'); player.src({type:'video/mp4',src:"${media}"});</script>`);
   });
-  assert.deepEqual(await resolveMkissaPlayerEmbed(embed, signal), { url: frame, referer: 'https://bysekoze.com/' });
+  assert.deepEqual(await resolveMkissaMp4Upload(mp4Embed, signal), {
+    sources: [{ url: media, type: 'mp4' }], subtitles: [], headers: { Referer: 'https://www.mp4upload.com/' }
+  });
   assert.equal(fetch.mock.callCount(), 1);
 });
 
-test('MKissa Fm-Hls rejects unsafe URLs before sending a request', async t => {
+test('MKissa Mp4 rejects unsafe embeds before fetching', async t => {
   const fetch = t.mock.method(globalThis, 'fetch', async () => { throw Error('unexpected fetch'); });
-  for (const value of [
-    'https://bysekoze.com.evil.test/e/AbC_012', 'https://bysekoze.com:443/e/AbC_012',
-    'https://bysekoze.com/e/../e/AbC_012', 'https://bysekoze.com/e/%2fAbC_012',
-    'https://bysekoze.com/e/AbC_012?token=value', 'https://user@bysekoze.com/e/AbC_012'
-  ]) {
-    await assert.rejects(resolveMkissaPlayerEmbed(value, signal), { code: 'INVALID_REQUEST' });
+  for (const value of [null, 'http://mp4upload.com/embed-abcdefgh1234.html',
+    mp4Embed + '?url=https://127.0.0.1', mp4Embed.replace('mp4upload.com', 'mp4upload.com.evil.test')]) {
+    assert.equal(mkissaMp4UploadEmbed(value), undefined);
+    await assert.rejects(resolveMkissaMp4Upload(value, signal), { code: 'INVALID_REQUEST' });
   }
-  await assert.rejects(resolveMkissaPlayerEmbed(embed, AbortSignal.abort(new Error('cancelled'))), { message: 'cancelled' });
+  await assert.rejects(resolveMkissaMp4Upload(mp4Embed, AbortSignal.abort(Error('cancelled'))), { message: 'cancelled' });
   assert.equal(fetch.mock.callCount(), 0);
 });
 
-test('MKissa Fm-Hls rejects private, mismatched and off-host iframe responses', async t => {
-  let body: unknown;
-  const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json(body));
-  const details = { code: 'AbC_012', owner_private: false, embed_frame_url: frame };
-  for (const candidate of [
-    { ...details, code: 'other' },
-    { ...details, embed_frame_url: 'https://n1mwq.org.evil.test/player/def012' },
-    { ...details, embed_frame_url: 'https://n1mwq.org/player/def012?token=value' }
-  ]) {
-    body = candidate;
-    await assert.rejects(resolveMkissaPlayerEmbed(embed, signal), { code: 'UNSUPPORTED_MEDIA' });
+test('MKissa Mp4 rejects deleted files, missing sources and unsafe CDN URLs', async t => {
+  let html = '';
+  t.mock.method(globalThis, 'fetch', async () => new Response(html));
+  html = 'File was deleted';
+  await assert.rejects(resolveMkissaMp4Upload(mp4Embed, signal), { code: 'UNAVAILABLE' });
+  for (const source of [undefined, media.replace('a1.mp4upload.com', '127.0.0.1'),
+    media.replace('a1.mp4upload.com', 'a1.mp4upload.com.evil.test'), media.replace(':183', ':8443'),
+    media.replace('https://', 'https://user@'), media + '#fragment', media.replace('/video.mp4', '/other.mp4')]) {
+    html = source ? `player.src({src:"${source}"})` : 'eval(packedScript)';
+    await assert.rejects(resolveMkissaMp4Upload(mp4Embed, signal), { code: 'UNSUPPORTED_MEDIA' });
   }
-  body = { ...details, owner_private: true };
-  await assert.rejects(resolveMkissaPlayerEmbed(embed, signal), { code: 'UPSTREAM_BLOCKED' });
-  assert.equal(fetch.mock.callCount(), 4);
 });

@@ -231,20 +231,41 @@ test('thumbnail lookup rejects private images and caches unavailable results wit
 });
 
 
-test('MKissa remains unavailable through production API routes without contacting upstream', async t => {
-  const methods = ['search', 'match', 'episodes', 'servers', 'resolve'] as const;
-  for (const method of methods) t.mock.method(mkissa, method, async () => assert.fail('Disabled MKissa must not contact upstream'));
+test('MKissa is configured and returns opaque direct MP4 playback through production API routes', async t => {
+  t.mock.method(mkissa, 'match', async () => ({ status: 'matched', title: { id: 'fixture', title: 'Example' } }));
+  t.mock.method(mkissa, 'episodes', async () => [{ id: 'episode-1', number: 1, kind: 'regular', audio: ['sub'] }]);
+  t.mock.method(mkissa, 'servers', async () => [{ id: 'server-1', name: 'MKissa Yt-mp4', audio: 'sub' }]);
+  t.mock.method(mkissa, 'resolve', async () => ({ sources: [{ url: 'https://8.8.8.8/fixture.mp4?Authorization=private', type: 'mp4' }],
+    subtitles: [], headers: { Referer: 'https://filelotion.fyi/' } }));
   const app = createServer({ catalog, providers: [mkissa], episodeMetadata: async anime => anime });
   await new Promise<void>(resolve => app.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise<void>((resolve, reject) => app.close(error => error ? reject(error) : resolve())));
   const base = 'http://127.0.0.1:' + (app.address() as AddressInfo).port + '/api/v1/';
   const status = await (await fetch(base + 'providers')).json();
-  assert.equal(status.providers[0].configured, false);
-  assert.equal(status.providers[0].status, 'unconfigured');
+  assert.equal(status.providers[0].configured, true);
+  assert.equal(status.providers[0].status, 'configured');
   const availability = await (await fetch(base + 'anime/1/availability')).json();
-  assert.equal(availability.providers[0].error.code, 'UNAVAILABLE');
+  assert.equal(availability.providers[0].status, 'available');
   const playback = await fetch(base + 'playback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ animeId: 1, episode: 1, provider: 'mkissa', fallback: false }) });
-  assert.equal(playback.status, 503);
-  const download = await fetch(base + 'downloads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ animeId: 1, provider: 'mkissa', fallback: false }) });
-  assert.equal(download.status, 503);
+  assert.equal(playback.status, 200);
+  const result = await playback.json();
+  assert.equal(result.provider, 'mkissa');
+  assert.equal(result.sources[0].type, 'mp4');
+  assert.match(result.sources[0].url, /^\/media\/[A-Za-z0-9_-]+$/);
+  assert(!JSON.stringify(result).includes('private'));
+});
+
+test('automatic playback follows saved priority before trying registry order', async () => {
+  const response = await fetch(`${root}/api/v1/playback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ animeId: 1, episode: 1, providerOrder: ['anikoto', 'reanime'] }) });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.provider, 'anikoto');
+  assert.deepEqual(result.attempts, []);
+});
+
+test('playback rejects unknown and duplicate provider priorities', async () => {
+  for (const providerOrder of [['unknown'], ['anikoto', 'anikoto'], 'anikoto']) {
+    const response = await fetch(`${root}/api/v1/playback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ animeId: 1, episode: 1, providerOrder }) });
+    assert.equal(response.status, 400);
+  }
 });
