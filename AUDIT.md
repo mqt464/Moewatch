@@ -39,9 +39,9 @@ Changes included:
 
 Validation: 206 app/API tests passed; two opt-in tests skipped. Seven relay tests passed. Production frontend, TypeScript unused-code checks, compiled Bun sidecar and isolated sidecar smoke test passed. All 68 affected browser tests passed.
 
-Local native packaging encountered a locked Discord bridge executable. The clean Windows release workflow builds and signs the installer. Interactive installation, installed-client upgrade, live provider playback and multi-client watchparty behavior were not manually repeated.
+The source-build workflow passed tests but could not package without its private Discord SDK setting. Stopped the workspace Discord helper to release its build lock, then built the native application and NSIS installer locally using the checksum-verified SDK. The prebuilt signing workflow passed; downloaded installer signatures were also verified locally against the installed-client public key. Published the installer, signature and updater manifest for v0.1.14. Interactive installation, installed-client upgrade, live provider playback and multi-client watchparty behavior were not manually repeated.
 
-Verdict: Ship after affected browser checks and release build pass.
+Verdict: Ship.
 Lean: -56 net lines in the extractor and its tests compared with the previous commit.
 
 # Release audits
