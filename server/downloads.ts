@@ -29,12 +29,14 @@ export class DownloadService {
   private stateFile: string;
   private ready: Promise<void>;
   private writes = Promise.resolve();
-  private active?: { id: string; controller: AbortController };
+  private active = new Map<string, { controller: AbortController; done: Promise<void> }>();
+  private settings = { simultaneous: 1, limitGiB: 0 };
   private running = false;
+  private removing = new Set<string>();
   private closed = false;
   private lastFlush = 0;
   private failure?: Error;
-  private transfer?: { id: string; rate: DownloadRate; remainingBytes?: number };
+  private transfers = new Map<string, { rate: DownloadRate; remainingBytes?: number }>();
   private prepared?: { id: string; episode: number; controller: AbortController; started: number; promise: Promise<PlaybackResponse | undefined> };
 
   constructor(private dependencies: Dependencies) {
@@ -50,6 +52,7 @@ export class DownloadService {
       const state = JSON.parse(await readFile(this.stateFile, 'utf8'));
       if (state.version !== 1 || !isAbsolute(state.location) || !Array.isArray(state.jobs)) throw new Error('Invalid downloads index');
       this.location = state.location;
+      if ([1,2,3].includes(state.settings?.simultaneous) && [0,10,25,50,100,250].includes(state.settings?.limitGiB)) this.settings = state.settings;
       this.jobs = state.jobs;
       for (const job of this.jobs) {
         if (!/^[a-f0-9-]{36}$/.test(job.id) || !isAbsolute(job.directory) || resolve(job.directory) !== resolve(dirname(job.directory), `moewatch-${job.id}`) || !job.files || !Array.isArray(job.episodes)) throw new Error('Invalid download entry');
@@ -64,7 +67,7 @@ export class DownloadService {
   private async check() { await this.ready; if (this.failure) throw this.failure; }
 
   private persist() {
-    const text = JSON.stringify({ version: 1, location: this.location, jobs: this.jobs });
+    const text = JSON.stringify({ version: 1, location: this.location, jobs: this.jobs, settings: this.settings });
     const write = this.writes.then(async () => {
       await mkdir(dirname(this.stateFile), { recursive: true });
       await writeFile(`${this.stateFile}.tmp`, text);
@@ -81,9 +84,13 @@ export class DownloadService {
   }
 
   private publicJob({ directory: _directory, files: _files, ...job }: StoredSeries): DownloadSeries {
-    const transfer = this.transfer?.id === job.id ? this.transfer : undefined;
+    const transfer = this.transfers.get(job.id);
     const bytesPerSecond = transfer?.rate.perSecond() || 0;
     return { ...job, bytesPerSecond, remainingSeconds: bytesPerSecond > 0 && transfer?.remainingBytes !== undefined ? Math.ceil(transfer.remainingBytes / bytesPerSecond) : undefined };
+  }
+
+  private usedBytes() {
+    return this.jobs.reduce((total, job) => total + Object.values(job.files).reduce((sum, file) => sum + file.bytes, 0) + job.episodes.filter(episode => episode.status === 'downloading').reduce((sum, episode) => sum + Math.max(0, episode.bytes - Object.entries(job.files).filter(([name, file]) => name.startsWith('episode-' + episode.number + '/') && file.category === 'video').reduce((bytes, [,file]) => bytes + file.bytes, 0)), 0), 0);
   }
 
   async list(): Promise<DownloadsResponse> {
@@ -102,7 +109,14 @@ export class DownloadService {
       try { const disk = await statfs(ancestor); storage.capacity = disk.blocks * disk.bsize; storage.free = disk.bavail * disk.bsize; break; }
       catch { if (dirname(ancestor) === ancestor) break; ancestor = dirname(ancestor); }
     }
-    return { downloads: this.jobs.map(job => this.publicJob(job)), location: this.location, storage, canPickFolder: process.platform === 'win32' };
+    return { downloads: this.jobs.map(job => this.publicJob(job)), location: this.location, storage, canPickFolder: process.platform === 'win32', settings: this.settings };
+  }
+
+  async setSettings(input: unknown) {
+    await this.check();
+    if (!input || typeof input !== 'object' || !('simultaneous' in input) || !('limitGiB' in input) || typeof input.simultaneous !== 'number' || typeof input.limitGiB !== 'number' || ![1,2,3].includes(Number(input.simultaneous)) || ![0,10,25,50,100,250].includes(Number(input.limitGiB))) throw new ApiError('INVALID_REQUEST', 'Invalid download settings', 400);
+    this.settings = { simultaneous: Number(input.simultaneous), limitGiB: Number(input.limitGiB) };
+    await this.persist(); void this.pump(); return this.list();
   }
 
   async setLocation(path: unknown) {
@@ -148,10 +162,10 @@ export class DownloadService {
     const job = this.jobs.find(job => job.id === id);
     if (!job) throw new ApiError('NOT_FOUND', 'Download not found', 404);
     if (this.prepared?.id === id) { this.prepared.controller.abort(); this.prepared = undefined; }
-    if (this.active?.id === id) {
-      this.active.controller.abort();
-      await this.activeDone;
-    }
+    this.removing.add(id);
+    try {
+    const active = this.active.get(id);
+    if (active) { active.controller.abort(); await active.done; }
     const target = resolve(job.directory);
     if (!isAbsolute(target) || target !== resolve(dirname(target), `moewatch-${job.id}`)) throw new Error('Invalid download directory');
     await rm(target, { recursive: true, force: true });
@@ -159,9 +173,9 @@ export class DownloadService {
     await this.persist();
     void this.pump();
     return { ok: true };
+    } finally { this.removing.delete(id); void this.pump(); }
   }
 
-  private activeDone: Promise<void> = Promise.resolve();
   private prepareNext(signal: AbortSignal) {
     const job = this.jobs.find(job => job.episodes.some(episode => episode.status === 'queued'));
     const episode = job?.episodes.find(episode => episode.status === 'queued');
@@ -197,15 +211,12 @@ export class DownloadService {
     this.running = true;
     try {
       while (!this.closed && !this.failure) {
-        const job = this.jobs.find(job => job.episodes.some(episode => episode.status === 'queued'));
+        const job = this.jobs.find(job => !this.active.has(job.id) && !this.removing.has(job.id) && job.episodes.some(episode => episode.status === 'queued'));
         const episode = job?.episodes.find(episode => episode.status === 'queued');
-        if (!job || !episode) break;
+        if (!job || !episode || this.active.size >= this.settings.simultaneous) break;
         const controller = new AbortController();
-        this.active = { id: job.id, controller };
-        this.activeDone = this.download(job, episode, controller.signal);
-        await this.activeDone;
-        this.active = undefined;
-        if (controller.signal.aborted && !this.closed) break;
+        const done = this.download(job, episode, controller.signal).catch(error => { this.failure = error instanceof Error ? error : new Error('Download failed'); }).finally(() => { this.active.delete(job.id); void this.pump(); });
+        this.active.set(job.id, { controller, done });
       }
     } catch (error) { this.failure = error instanceof Error ? error : new Error('Download storage failed'); }
     finally { this.running = false; }
@@ -218,6 +229,9 @@ export class DownloadService {
     const record = (prefix: string, files: SavedFile[]) => { for (const file of files) job.files[`${prefix}/${file.name}`] = file; };
     episode.status = 'downloading';
     try {
+      const storage = (await this.list()).storage;
+      if (storage.capacity && storage.free < 512 * 1024 * 1024) throw new Error('Disk space is low. Free some space and retry.');
+      const recordedBytes = storage.total;
       await this.persist();
       await rm(directory, { recursive: true, force: true });
       for (const key of Object.keys(job.files)) if (key.startsWith(`${folder}/`)) delete job.files[key];
@@ -227,28 +241,30 @@ export class DownloadService {
       let source: PlaybackResponse['sources'][number];
       const excluded: string[] = [];
       while (true) {
-        this.transfer = undefined;
+        this.transfers.delete(job.id);
         playback = await this.resolved(job, episode.number, signal, excluded);
         const rate = new DownloadRate();
-        this.transfer = { id: job.id, rate };
+        this.transfers.set(job.id, { rate });
         const ranked = playback.sources.map(source => ({ source, height: Number(source.quality?.match(/\d+/)?.[0]) || 0 })).filter(item => item.height).sort((a, b) => a.height - b.height);
         source = (ranked.filter(item => item.height <= job.quality).at(-1) || ranked[0])?.source || playback.sources[0];
         if (!source) throw new Error('No downloadable source');
         try {
           media = await saveMedia({ url: source.url, directory, read: this.dependencies.read, quality: job.quality, signal, onProgress: (progress, bytes, estimate) => {
+            if (this.settings.limitGiB && this.usedBytes() + Math.max(0, bytes - episode.bytes) > this.settings.limitGiB * 1024 ** 3) throw new Error('Download storage limit reached. Raise the limit and retry.');
+            if (storage.capacity && this.usedBytes() - recordedBytes + bytes - episode.bytes > storage.free - 512 * 1024 * 1024) throw new Error('Disk space is low. Free some space and retry.');
             episode.progress = Math.max(episode.progress, progress); episode.bytes = bytes;
             rate.update(estimate?.transferredBytes ?? bytes);
             const completed = job.episodes.filter(item => item.status === 'complete');
             const average = completed.length ? completed.reduce((sum, item) => sum + item.bytes, 0) / completed.length : estimate?.totalBytes;
             const pending = job.episodes.filter(item => item.status === 'queued').length;
-            this.transfer = { id: job.id, rate, remainingBytes: estimate?.totalBytes !== undefined ? Math.max(0, estimate.totalBytes - bytes) + (average || 0) * pending : undefined };
+            this.transfers.set(job.id, { rate, remainingBytes: estimate?.totalBytes !== undefined ? Math.max(0, estimate.totalBytes - bytes) + (average || 0) * pending : undefined });
             if (episode.progress >= .8) this.prepareNext(signal);
             if (Date.now() - this.lastFlush > 1500) { this.lastFlush = Date.now(); void this.persist().catch(() => {}); }
           } });
           break;
         } catch (error) {
           const key = `${playback.provider}:${playback.server.id}`;
-          const diskError = ['ENOSPC', 'EACCES', 'EPERM', 'EROFS'].includes((error as NodeJS.ErrnoException).code || '');
+          const diskError = (error instanceof Error && /^(Download storage limit|Disk space is low)/.test(error.message)) || ['ENOSPC', 'EACCES', 'EPERM', 'EROFS'].includes((error as NodeJS.ErrnoException).code || '');
           if (!job.fallback || diskError || signal.aborted || excluded.includes(key) || excluded.length >= 17) throw error;
           excluded.push(key);
           await rm(directory, { recursive: true, force: true });
@@ -256,7 +272,7 @@ export class DownloadService {
         }
       }
       record(folder, media.files);
-      this.transfer = undefined;
+      this.transfers.delete(job.id);
       const subtitles = [];
       for (let i = 0; i < playback.subtitles.length; i++) {
         const track = playback.subtitles[i];
@@ -296,7 +312,7 @@ export class DownloadService {
       episode.status = signal.aborted && this.closed ? 'queued' : 'failed';
       episode.error = signal.aborted ? 'Download stopped' : error instanceof Error ? error.message : 'Download failed';
     }
-    if (this.transfer?.id === job.id) this.transfer = undefined;
+    this.transfers.delete(job.id);
     await this.persist();
   }
 
@@ -323,5 +339,5 @@ export class DownloadService {
     await pipeline(createReadStream(target, { start, end }), response, { signal });
   }
 
-  async close() { this.closed = true; this.prepared?.controller.abort(); this.active?.controller.abort(); await this.activeDone; await this.writes; }
+  async close() { this.closed = true; this.prepared?.controller.abort(); for (const active of this.active.values()) active.controller.abort(); await Promise.all([...this.active.values()].map(active => active.done)); await this.writes; }
 }

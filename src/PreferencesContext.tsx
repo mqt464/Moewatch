@@ -6,11 +6,15 @@ export const usePreferences = () => useContext(PreferencesContext);
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState(() => {
-    try { return readPreferences(localStorage.getItem(preferencesKey)); }
+    try { const raw = localStorage.getItem(preferencesKey);
+      const settings = readPreferences(raw);
+      if (!raw || !Object.hasOwn(JSON.parse(raw) || {}, 'autoNext')) settings.autoNext = localStorage.getItem('moewatch-autonext') !== 'false';
+      return settings; }
     catch { return { ...defaultPreferences }; }
   });
   const [error, setError] = useState('');
   useEffect(() => {
+    document.documentElement.style.zoom = String(preferences.textSize / 100);
     document.documentElement.dataset.reduceMotion = String(preferences.reduceMotion);
     try { localStorage.setItem(preferencesKey, JSON.stringify(preferences)); setError(''); }
     catch { setError('Settings could not be saved. Changes will last only until you reload this page.'); }

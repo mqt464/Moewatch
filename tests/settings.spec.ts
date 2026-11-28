@@ -33,19 +33,18 @@ test('settings show only essential categories and no filler', async ({ page }) =
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Account', exact: true })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: 'Settings pages' });
-  await expect(navigation.getByRole('link')).toHaveText(['Account', 'Appearance', 'Playback', 'About']);
+  await expect(navigation.getByRole('link')).toHaveText(['Account', 'Appearance', 'Playback', 'Subtitles', 'Downloads', 'Accessibility', 'Data', 'About']);
   for (const section of ['account', 'playback', 'about']) {
     await page.goto('/settings/' + section);
-    await expect(page.locator('.settings-content h2, .settings-content h3')).toHaveCount(section === 'playback' ? 2 : 0);
+    await expect(page.locator('.settings-content h2, .settings-content h3')).toHaveCount(section === 'playback' ? 1 : 0);
     if (section === 'playback') {
-      await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Provider status' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Providers' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(0);
     }
     await expect(page.getByText('Changes save automatically.')).toHaveCount(0);
     await expect(page.locator('.settings-sidebar-label, .settings-local-note')).toHaveCount(0);
   }
-  await expect(page.getByRole('button', { name: 'Check for updates' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Check for updates' })).toHaveCount(0);
 });
 
 test('connected AniList profile shows avatar, sync controls and signs out', async ({ page }) => {
@@ -58,6 +57,7 @@ test('connected AniList profile shows avatar, sync controls and signs out', asyn
   await page.goto('/settings/account');
   await expect(page.getByText('Anime Fan', { exact: true })).toBeVisible();
   await expect(page.locator('.profile-button img')).toHaveAttribute('src', avatar);
+  await expect(page.locator('.settings-avatar img')).toHaveAttribute('src', avatar);
   const sync = page.getByRole('button', { name: 'Sync now', exact: true });
   await expect(sync).toBeEnabled();
   const previousReads = listReads;
@@ -73,10 +73,12 @@ test('audio and subtitle preferences persist', async ({ page }) => {
   await page.route('**/api/v1/providers', route => route.fulfill({ json: { providers: [{ id: 'anikoto', name: 'KotoPlay / AniKoto', configured: true, status: 'configured' }] } }));
   await page.goto('/settings/playback');
   await page.getByRole('combobox', { name: 'Preferred audio' }).selectOption('dub');
+  await page.goto('/settings/subtitles');
   await page.getByRole('switch', { name: 'Subtitles' }).check();
   await page.reload();
-  await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
   await expect(page.getByRole('switch', { name: 'Subtitles' })).toBeChecked();
+  await page.goto('/settings/playback');
+  await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
   await expect(page.getByRole('img', { name: 'Configured', exact: true })).toBeVisible();
   for (const icon of await page.locator('.settings-provider-name img').all()) {
     await expect.poll(() => icon.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
@@ -90,8 +92,8 @@ test('desktop Discord integration toggles persist and disabling watch parties le
   await page.route('**/api/v1/discord/party/leave', route => { leaves++; return route.fulfill({ json: { ok: true } }); });
   await page.goto('/settings/integrations');
   await expect(page.getByRole('heading', { name: 'Integrations', exact: true })).toBeVisible();
-  const rpc = page.getByRole('switch', { name: 'Discord RPC', exact: true });
-  const party = page.getByRole('switch', { name: 'Discord Watch Party', exact: true });
+  const rpc = page.getByRole('switch', { name: 'Discord activity', exact: true });
+  const party = page.getByRole('switch', { name: 'Discord watch party', exact: true });
   await expect(rpc).toBeChecked();
   await expect(party).toBeChecked();
   await rpc.uncheck();
@@ -130,7 +132,7 @@ test('provider names and icons stay readable across settings widths', async ({ p
 test('all settings pages remain accessible without horizontal overflow', async ({ page }) => {
   for (const width of [375, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const section of ['', '/account', '/playback', '/about']) {
+    for (const section of ['', '/account', '/appearance', '/playback', '/subtitles', '/downloads', '/accessibility', '/data', '/about']) {
       await page.goto(`/settings${section}`);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -148,7 +150,7 @@ test('storage failures are visible and unknown settings pages recover', async ({
       setItem.call(this, key, value);
     };
   });
-  await page.goto('/settings/playback');
+  await page.goto('/settings/subtitles');
   await page.getByRole('switch', { name: 'Subtitles' }).check();
   await expect(page.getByRole('alert').filter({ hasText: 'Settings could not be saved' })).toBeVisible();
   await page.goto('/settings/missing');
@@ -220,11 +222,49 @@ test('preferences synchronize between tabs', async ({ page, context }) => {
   await page.goto('/settings/playback');
   const second = await context.newPage();
   await second.goto('/settings/playback');
-  await expect(second.getByRole('switch', { name: 'Subtitles' })).toBeVisible();
-  await page.getByRole('switch', { name: 'Subtitles' }).check();
-  await expect(second.getByRole('switch', { name: 'Subtitles' })).toBeChecked();
+  await expect(second.getByRole('switch', { name: 'Autoplay next episode' })).toBeVisible();
+  await page.getByRole('switch', { name: 'Autoplay next episode' }).uncheck();
+  await expect(second.getByRole('switch', { name: 'Autoplay next episode' })).not.toBeChecked();
   await second.getByRole('combobox', { name: 'Preferred audio' }).selectOption('dub');
   await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
   await second.close();
 });
 
+
+test('new playback, subtitle and accessibility controls persist', async ({ page }) => {
+  await page.goto('/settings/playback');
+  await page.getByRole('switch', { name: 'Autoplay next episode' }).uncheck();
+  await page.getByRole('switch', { name: 'Skip openings automatically' }).check();
+  await page.reload();
+  await expect(page.getByRole('switch', { name: 'Autoplay next episode' })).not.toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Skip openings automatically' })).toBeChecked();
+  await page.goto('/settings/subtitles');
+  await page.getByRole('combobox', { name: 'Text size' }).selectOption('150');
+  await expect(page.locator('.settings-subtitle-preview span')).toHaveCSS('font-size', '24px');
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Text size' })).toHaveValue('150');
+  await page.goto('/settings/accessibility');
+  await page.getByRole('switch', { name: 'Reduced motion' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-reduce-motion', 'true');
+});
+
+test('backup restore rejects invalid data and history clearing preserves saved titles', async ({ page }) => {
+  await page.goto('/settings/data');
+  await page.getByLabel('Backup file').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{"version":1,"library":{}}') });
+  await expect(page.getByRole('alert').filter({ hasText: 'Choose a Moewatch backup file.' })).toBeVisible();
+  const before = await page.evaluate(() => localStorage.getItem('moewatch-library-v1'));
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  expect(await page.evaluate(() => localStorage.getItem('moewatch-library-v1'))).toBe(before);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Watch history cleared.' })).toBeVisible();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('moewatch-library-v1') || '{}'));
+  expect(stored.progress).toEqual([]);
+});
+
+test('phone settings keep the selected category visible', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/settings/subtitles');
+  await expect(page.getByRole('navigation', { name: 'Settings pages' }).getByRole('link', { name: 'Subtitles', exact: true })).toBeInViewport();
+});

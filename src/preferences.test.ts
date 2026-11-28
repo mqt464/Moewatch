@@ -54,3 +54,9 @@ test('provider priority preserves order and repairs stale or duplicate entries',
   assert.deepEqual(result.providerOrder, ['miruro', 'anikoto', 'reanime', 'anipm', 'gotaku', 'mkissa']);
   assert.deepEqual(readPreferences('{"providerOrder":"miruro"}').providerOrder, defaultPreferences.providerOrder);
 });
+
+test('playback and accessibility preferences reject invalid values and preserve supported choices', () => {
+  const supported = { ...defaultPreferences, autoNext: false, resumePlayback: false, skipOpening: true, skipEnding: true, subtitleLanguage: 'fr', subtitleSize: 150, subtitleBackground: 75, textSize: 125, titleLanguage: 'romaji' };
+  assert.deepEqual(readPreferences(JSON.stringify(supported)), supported);
+  assert.deepEqual(readPreferences(JSON.stringify({ autoNext: 'no', resumePlayback: 0, skipOpening: 'yes', skipEnding: 1, subtitleLanguage: 'unknown', subtitleSize: 999, subtitleBackground: -1, textSize: 900 })), defaultPreferences);
+});

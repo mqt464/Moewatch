@@ -49,6 +49,7 @@ async function fixture(page:Page, options: { waitForMedia?: boolean; dub?: boole
 }
 test('picture-in-picture toggles, follows native dismissal and handles rejection', async ({ page }) => {
  await page.addInitScript(() => {
+   Object.defineProperty(window, 'documentPictureInPicture', { value: undefined });
    let current: HTMLVideoElement | null = null;
    Object.defineProperty(document, 'pictureInPictureEnabled', { value: true });
    Object.defineProperty(document, 'pictureInPictureElement', { get: () => current });
@@ -77,6 +78,57 @@ test('picture-in-picture toggles, follows native dismissal and handles rejection
  await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
  await expect(page.getByRole('status').filter({ hasText: 'Picture-in-picture is unavailable' })).toBeVisible();
  await expect(page.locator('.player-empty')).toHaveCount(0);
+});
+
+test('document PiP reuses the player, controls and subtitles and restores on close', async ({ page, context }) => {
+ await fixture(page);
+ await page.getByRole('button', { name: 'Subtitles', exact: true }).click();
+ await page.getByRole('button', { name: 'On', exact: true }).click();
+ await page.locator('.cinema-header h1').click();
+ await page.locator('video').evaluate(video => { video.dataset.originalPlayer = 'true'; });
+ const popup = context.waitForEvent('page');
+ await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
+ const pip = await popup;
+ await pip.setViewportSize({ width: 560, height: 315 });
+ await expect(pip.locator('video')).toHaveAttribute('data-original-player', 'true');
+ await expect(page.getByText('Playing in picture-in-picture')).toBeVisible();
+ await expect(pip.locator('.subtitle-overlay')).toHaveText('A journey begins.');
+ await pip.getByRole('slider', { name: 'Playback position' }).fill('2');
+ await expect.poll(() => pip.locator('video').evaluate(v => v.currentTime)).toBeGreaterThanOrEqual(2);
+ await pip.getByRole('button', { name: 'Mute', exact: true }).click();
+ await expect(pip.locator('video')).toHaveJSProperty('muted', true);
+ await pip.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await expect(pip.getByRole('combobox', { name: 'Sleep timer' })).toBeVisible();
+ await pip.getByRole('button', { name: 'Playback settings', exact: true }).click();
+ await pip.locator('video').click();
+ await expect(pip.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+ await pip.locator('video').click();
+ await expect(pip.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+ await pip.screenshot({ path: 'artifacts/player/custom-pip.png' });
+ await pip.locator('video').focus();
+ await pip.keyboard.press('k');
+ await expect(pip.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+ await pip.keyboard.press('k');
+ await pip.getByRole('button', { name: 'Exit picture-in-picture', exact: true }).click();
+ await expect(page.locator('video')).toHaveAttribute('data-original-player', 'true');
+ await expect(page.locator('video')).toHaveJSProperty('muted', true);
+ await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
+ await page.getByRole('button', { name: 'Return to player' }).click();
+ await expect(page.locator('video')).toBeVisible();
+});
+
+test('document PiP rejection leaves the inline player usable', async ({ page }) => {
+ await page.addInitScript(() => {
+   Object.defineProperty(window, 'documentPictureInPicture', { value: {
+     requestWindow: async () => { throw new Error('Denied'); },
+   } });
+ });
+ await fixture(page);
+ await page.getByRole('button', { name: 'Picture-in-picture', exact: true }).click();
+ await expect(page.getByRole('status').filter({ hasText: 'Picture-in-picture is unavailable' })).toBeVisible();
+ await expect(page.locator('video')).toBeVisible();
+ await page.getByRole('button', { name: 'Play', exact: true }).click();
+ await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
 });
 
 test('custom player plays real media, seeks, renders subtitles, skips and resumes',async({page})=>{
@@ -1000,4 +1052,27 @@ test('failed native fullscreen exit retains native controls', async ({ page }) =
  await expect(video).toHaveJSProperty('controls', true);
  await video.dispatchEvent('webkitendfullscreen');
  await expect(video).toHaveJSProperty('controls', false);
+});
+
+test('saved playback preferences disable resume and skip openings automatically', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moewatch-settings-v1', JSON.stringify({ resumePlayback: false, skipOpening: true, autoNext: false }));
+  });
+  await fixture(page, { providerSkips: { intro: { start: 0, end: 2 } } });
+  await expect(page.locator('video')).toHaveJSProperty('currentTime', 0);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate(video => (video as HTMLVideoElement).currentTime)).toBeGreaterThanOrEqual(2);
+  await page.locator('video').evaluate(video => video.dispatchEvent(new Event('ended')));
+  await expect(page.getByText('Next episode in 5')).not.toBeVisible();
+});
+
+test('subtitle appearance and delay apply to rendered cues', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moewatch-settings-v1', JSON.stringify({ subtitles: true, subtitleSize: 150, subtitleBackground: 75 })));
+  await fixture(page);
+  await expect(page.locator('.subtitle-overlay span')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.75)');
+  await page.getByRole('button', { name: 'Subtitles', exact: true }).click();
+  await page.getByRole('spinbutton', { name: 'Subtitle delay in seconds' }).fill('2');
+  await expect(page.locator('.subtitle-overlay')).toHaveText('');
+  await page.getByRole('slider', { name: 'Playback position' }).fill('3');
+  await expect(page.locator('.subtitle-overlay')).toHaveText('A journey begins.');
 });

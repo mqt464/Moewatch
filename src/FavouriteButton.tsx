@@ -17,15 +17,17 @@ function ConnectedFavourite({ mediaId, userId }: { mediaId: number; userId: numb
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const locked = useRef(false);
+  const revision = useRef(0);
   const path = `/account/favourites/${mediaId}`;
   const headers = { 'Content-Type': 'application/json', 'X-Moewatch-Account': String(userId) };
   useEffect(() => {
     const controller = new AbortController();
     const refresh = () => {
       if (document.visibilityState !== 'visible' || locked.current) return;
+      const run = ++revision.current;
       void apiRequest<Favourite>(path, { headers: { 'X-Moewatch-Account': String(userId) }, signal: controller.signal })
-        .then(value => { if (!controller.signal.aborted) { setState(value); setError(''); } })
-        .catch(() => { if (!controller.signal.aborted) setError('Could not load AniList favourites. Refocus this window to retry.'); });
+        .then(value => { if (!controller.signal.aborted && run === revision.current) { setState(value); setError(''); } })
+        .catch(() => { if (!controller.signal.aborted && run === revision.current) setError('Could not load AniList favourites. Refocus this window to retry.'); });
     };
     refresh();
     window.addEventListener('focus', refresh);
@@ -35,10 +37,14 @@ function ConnectedFavourite({ mediaId, userId }: { mediaId: number; userId: numb
   }, [path, userId]);
   async function toggle() {
     if (!state || locked.current) return;
+    const previous = state;
+    const desired = !state.isFavourite;
+    revision.current++;
     locked.current = true; setBusy(true); setError('');
+    setState({ ...state, isFavourite: desired });
     try {
-      setState(await apiRequest<Favourite>(path, { method: 'PUT', headers, body: JSON.stringify({ isFavourite: !state.isFavourite }) }));
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not sync favourite with AniList'); }
+      setState(await apiRequest<Favourite>(path, { method: 'PUT', headers, body: JSON.stringify({ isFavourite: desired }) }));
+    } catch (error) { setState(previous); setError(error instanceof Error ? error.message : 'Could not sync favourite with AniList'); }
     finally { locked.current = false; setBusy(false); }
   }
   const label = state?.isFavourite ? 'Remove from AniList favourites' : 'Favourite on AniList';

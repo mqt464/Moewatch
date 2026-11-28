@@ -1,3 +1,4 @@
+import { AnimeTitle } from './AnimeTitle';
 import { useEffect, useState } from 'react';
 import { Link } from './navigation';
 import { fetchAnime, type Anime } from './catalog';
@@ -32,7 +33,7 @@ export function ContinueCard({ anime, progress: saved }: { anime: Anime; progres
           <span className="progress-track" role="progressbar" aria-label={details.title + ' episode progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><span style={{ width: percent + '%' }} /></span>
         </div>
       </div>
-      <h3>{details.title}</h3>
+      <h3><AnimeTitle anime={details} /></h3>
     </Link>
   </article>;
 }

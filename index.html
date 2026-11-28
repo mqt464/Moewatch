@@ -6,6 +6,10 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="Search anime, save titles and play local videos." />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      const device = new URLSearchParams(location.search).get('device');
+      if (device) document.querySelector('link[rel="manifest"]').href = '/manifest.webmanifest?device=' + encodeURIComponent(device);
+    </script>
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

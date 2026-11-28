@@ -21,20 +21,27 @@ async function outgoingAddress(): Promise<string | undefined> {
 
 export function createSharedAccess(handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>) {
  const file = resolve(process.env.MOEWATCH_DATA_DIR || '.moewatch', 'shared-access.json');
- let state: { enabled: boolean; keepRunning: boolean; token: string; session: string; storage: Record<string, string> } = { enabled: false, keepRunning: false, token: randomBytes(32).toString('hex'), session: '', storage: {} };
+ let state: { enabled: boolean; keepRunning: boolean; token: string; session: string; storage: Record<string, string>; devices: { id: string; name: string; connected: number }[] } = { enabled: false, keepRunning: false, token: randomBytes(32).toString('hex'), session: '', storage: {}, devices: [] };
  try { state = { ...state, ...JSON.parse(readFileSync(file, 'utf8')) }; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
  const save = () => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file + '.tmp', JSON.stringify(state), { mode: 0o600 }); renameSync(file + '.tmp', file); };
  const port = Number(process.env.MOEWATCH_PORT || 17846) + 1;
- const status = async () => { const address = primaryLanAddress(networkInterfaces(), await outgoingAddress()); return { enabled: state.enabled, keepRunning: state.keepRunning, urls: address ? [`http://${address}:${port}/?access=${state.token}`] : [] }; };
+ const status = async () => { const address = primaryLanAddress(networkInterfaces(), await outgoingAddress()); return { enabled: state.enabled, keepRunning: state.keepRunning, devices: state.devices, urls: address ? [`http://${address}:${port}/?access=${state.token}`] : [] }; };
  const json = (res: ServerResponse, code: number, body: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
  async function body(req: IncomingMessage) { let text = ''; for await (const chunk of req) { text += chunk; if (Buffer.byteLength(text) > 1024 * 1024) throw new Error('Request too large'); } return JSON.parse(text); }
  const lan = createServer(async (req, res) => {
   if (!state.enabled) { res.writeHead(403).end(); return; }
   const url = new URL(req.url || '/', 'http://localhost');
-  if (url.searchParams.get('access') === state.token) { res.writeHead(303, { Location: '/', 'Set-Cookie': `moewatch_access=${state.token}; Path=/; HttpOnly; SameSite=Lax`, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.end(); return; }
+  if (url.searchParams.get('access') === state.token) { const id = randomBytes(32).toString('hex'); const agent = req.headers['user-agent'] || ''; const name = /iPad/.test(agent) ? 'iPad' : /iPhone/.test(agent) ? 'iPhone' : /Android/.test(agent) ? 'Android device' : /Windows/.test(agent) ? 'Windows device' : /Macintosh/.test(agent) ? 'Mac' : 'Web browser'; state.devices.push({ id, name, connected: Date.now() }); save(); res.writeHead(303, { Location: `/?device=${id}`, 'Set-Cookie': `moewatch_access=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); res.end(); return; }
+  const launchDevice = state.devices.find(device => device.id === url.searchParams.get('device'));
+  if (url.searchParams.has('device') && (url.pathname === '/' || url.pathname === '/manifest.webmanifest')) {
+   if (!launchDevice || req.method !== 'GET') { res.writeHead(403).end(); return; }
+   res.setHeader('Cache-Control', 'no-store');
+   res.setHeader('Referrer-Policy', 'no-referrer');
+   if (url.pathname === '/') res.setHeader('Set-Cookie', `moewatch_access=${launchDevice.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+  }
   // Home-screen installers fetch public branding without the browser's session cookie.
   if ((req.method === 'GET' || req.method === 'HEAD') && ['/manifest.webmanifest', '/apple-touch-icon.png', '/pwa-192.png', '/pwa-512.png', '/favicon.png'].includes(url.pathname)) { await handler(req, res); return; }
-  const authorized = req.headers.cookie?.split(';').some(c => c.trim() === `moewatch_access=${state.token}`);
+  const authorized = (url.pathname === '/' && launchDevice) || req.headers.cookie?.split(';').some(c => state.devices.some(device => c.trim() === `moewatch_access=${device.id}`));
   if (!authorized) { res.writeHead(403).end('Open the link from Shared Access on the desktop app.'); return; }
   req.headers.cookie = `moewatch_session=${state.session}`;
   await handle(req, res, false);
@@ -53,6 +60,16 @@ export function createSharedAccess(handler: (req: IncomingMessage, res: ServerRe
     const original = res.setHeader.bind(res);
     res.setHeader = ((name: string, value: any) => { if (name.toLowerCase() === 'set-cookie') for (const cookie of Array.isArray(value) ? value : [value]) { const match = /^moewatch_session=([^;]*)/.exec(String(cookie)); if (match) { state.session = match[1]; save(); } } return original(name, value); }) as typeof res.setHeader;
    }
+   if (url.pathname.startsWith('/api/v1/shared-access/')) {
+    if (!local) return json(res, 403, {});
+    const previous = { ...state, devices: [...state.devices] };
+    if (url.pathname === '/api/v1/shared-access/reset' && req.method === 'POST') { state.token = randomBytes(32).toString('hex'); state.devices = []; }
+    else if (req.method === 'DELETE' && url.pathname.startsWith('/api/v1/shared-access/devices/')) { const id = url.pathname.split('/').at(-1); state.devices = state.devices.filter(device => device.id !== id); }
+    else return json(res, 404, {});
+    try { save(); } catch (error) { state = previous; throw error; }
+    return json(res, 200, await status());
+   }
+   if (!local && ['/api/v1/downloads/location', '/api/v1/downloads/pick-folder', '/api/v1/downloads/settings'].includes(url.pathname) && req.method !== 'GET') return json(res, 403, { error: { message: 'Manage downloads on the host.' } });
    if (url.pathname === '/api/v1/shared-access') {
     if (!local) return json(res, 403, {});
     if (req.method === 'PUT') {

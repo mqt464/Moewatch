@@ -8,7 +8,7 @@ import { readLibrary, recordProgress, libraryStatus, setLibraryStatus, type Libr
 import { editEntry, setEntryStatus, freshAccount, mergeRemote, readAccount, type AccountLibrary } from './accountSync';
 
 type User = { id: number; name: string; avatar: string };
-type AccountValue = { user: User | null; configured: boolean | null; loading: boolean; error: string; syncing: boolean; lastSynced: number | null; storageError: boolean; library: Library; statusFor: (anime: Anime) => AccountStatus | null; setStatus: (anime: Anime, status: AccountStatus | null) => void; toggle: (anime: Anime) => void; update: (progress: Progress) => void; signingIn: boolean; cancelLogin: () => void; login: () => void; logout: () => Promise<void>; sync: () => Promise<void> };
+type AccountValue = { user: User | null; configured: boolean | null; loading: boolean; error: string; syncing: boolean; lastSynced: number | null; storageError: boolean; library: Library; restoreLibrary: (library: Library) => void; clearHistory: () => void; statusFor: (anime: Anime) => AccountStatus | null; setStatus: (anime: Anime, status: AccountStatus | null) => void; toggle: (anime: Anime) => void; update: (progress: Progress) => void; signingIn: boolean; cancelLogin: () => void; login: () => void; logout: () => Promise<void>; sync: () => Promise<void> };
 const Context = createContext<AccountValue>(null!);
 export const useAccount = () => useContext(Context);
 const guestKey = 'moewatch-library-v1';
@@ -182,5 +182,5 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const status = next.pending[progress.anime.id]?.status ?? libraryStatus(library, progress.anime);
     save({ ...next, library: owner.current ? setLibraryStatus(library, progress.anime, status ?? 'CURRENT') : library });
   }
-  return <Context.Provider value={{ user, configured, loading, error, syncing, lastSynced: state.lastSynced, storageError, library: state.library, statusFor, setStatus, toggle, update, signingIn, cancelLogin, login, logout, sync }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ user, configured, loading, error, syncing, lastSynced: state.lastSynced, storageError, library: state.library, restoreLibrary: library => save({ ...current.current, library }), clearHistory: () => save({ ...current.current, library: { ...current.current.library, progress: [] } }), statusFor, setStatus, toggle, update, signingIn, cancelLogin, login, logout, sync }}>{children}</Context.Provider>;
 }

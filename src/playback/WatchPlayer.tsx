@@ -1,3 +1,5 @@
+import { AnimeTitle } from '../AnimeTitle';
+import { PipSurface } from './PipSurface';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -108,7 +110,7 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     if (!player) return;
     if (await party.ready()) return;
     if (video.current !== player) return;
-    if (progress?.episode === episode) {
+    if (preferences.resumePlayback && progress?.episode === episode) {
       if (canResume(progress.time, progress.duration, player.duration)) player.currentTime = progress.time;
       else if (progress.time > 0 && progress.time < progress.duration * 0.95) setResumeNote('This source has a different runtime. Saved progress was not applied.');
     }
@@ -132,8 +134,8 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
   const findingSource = !source && (downloadsLoading || availability.loading || loading || (playable && !effectivePlayback && !error && !availability.error));
   const playerError = error || party.error || (!localSource && availability.error ? 'Sources could not be checked. Try another provider.' : '');
   function reportError(message: string) { video.current?.pause(); setBuffering(false); setError(message); }
-  return <div className="watch-content" aria-label="Episode player">
-    <header className="cinema-header"><Link viewTransition={!window.matchMedia('(pointer: coarse)').matches && !preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1>{anime.title}</h1><p>Episode {episode}</p></div></header>
+  return <PipSurface><div className="watch-content" aria-label="Episode player">
+    <header className="cinema-header"><Link viewTransition={!window.matchMedia('(pointer: coarse)').matches && !preferences.reduceMotion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches} className="cinema-icon" aria-label="Back to series" to={`/anime/${anime.id}`}><ArrowLeft aria-hidden="true" /></Link><div><h1><AnimeTitle anime={anime} /></h1><p>Episode {episode}</p></div></header>
     <div className="player-shell">
       <img className={`player-backdrop${(source && revealedSource === source.url) || playerError || (!source && !findingSource) ? ' is-revealed' : ''}`} src={episodeThumbnail || anime.banner || anime.cover} onError={event => { const fallback = anime.banner || anime.cover; if (event.currentTarget.getAttribute('src') !== fallback) event.currentTarget.src = fallback; }} alt="" aria-hidden="true" />
       {source ? <Player key={source.url} source={source} videoRef={video} label={`${anime.title}, episode ${episode}`} onSave={save} onReady={loaded} onFirstFrame={() => setRevealedSource(source.url)} onBuffering={setBuffering} onClick={() => togglePlayback(video, reportError)} onError={reportError} /> : null}
@@ -154,5 +156,5 @@ export function WatchPlayer({ anime, episode, progress, onProgress }: { anime: A
     </div>
 
     </CinemaControls>
-  </div>;
+  </div></PipSurface>;
 }

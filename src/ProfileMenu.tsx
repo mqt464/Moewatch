@@ -7,7 +7,7 @@ import { installDesktopUpdate, useDesktopUpdates } from './settings/DesktopUpdat
 
 export function ProfileMenu() {
   const { user, configured, loading, signingIn, login, logout } = useAccount();
-  const { available, busy, status } = useDesktopUpdates();
+  const { available, busy } = useDesktopUpdates();
   const updateDescription = useId();
   const [failedAvatar, setFailedAvatar] = useState('');
   const avatar = user?.avatar && user.avatar !== failedAvatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" onError={() => setFailedAvatar(user.avatar)} /> : <UserRound aria-hidden="true" size={20} strokeWidth={1.5} />;
@@ -59,7 +59,6 @@ export function ProfileMenu() {
       <Link role="menuitem" tabIndex={-1} to="/settings/about"><Info aria-hidden="true" size={16} />About</Link>
       {available && <>
         <button role="menuitem" tabIndex={-1} className="profile-menu-update" aria-disabled={busy} onClick={() => { if (!busy) void installDesktopUpdate(); }}><Download aria-hidden="true" size={16} />{busy ? 'Installing update...' : 'Install update'}</button>
-        <p className="profile-update-status" role="status">{status}</p>
       </>}
       <div className="profile-menu-divider" role="separator" />
       <button role="menuitem" tabIndex={-1} aria-disabled={!user || loading} className={`profile-menu-signout${!user || loading ? ' is-dimmed' : ''}`} onClick={() => { if (user && !loading) { setOpen(false); void logout(); trigger.current?.focus(); } }}><LogOut aria-hidden="true" size={16} />Sign out</button>

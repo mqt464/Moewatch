@@ -24,4 +24,4 @@ export type DownloadSeries = {
   remainingSeconds?: number;
 };
 export type DownloadStorage = { video: number; artwork: number; subtitles: number; other: number; total: number; capacity: number; free: number };
-export type DownloadsResponse = { downloads: DownloadSeries[]; location: string; storage: DownloadStorage; canPickFolder: boolean };
+export type DownloadsResponse = { downloads: DownloadSeries[]; location: string; storage: DownloadStorage; canPickFolder: boolean; canManage?: boolean; settings?: { simultaneous: number; limitGiB: number } };

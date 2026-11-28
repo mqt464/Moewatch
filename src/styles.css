@@ -86,7 +86,6 @@ html.no-view-transitions .page-scene { animation: page-enter 160ms var(--ease-ou
 .profile-update-dot { position: absolute; top: -1px; right: -1px; width: 11px; height: 11px; border-radius: 50%; background: var(--pink); pointer-events: none; }
 .profile-menu [role='menuitem'].profile-menu-update { color: var(--pink); }
 .profile-menu-update[aria-disabled='true'] { opacity: .6; cursor: default; }
-.profile-update-status { padding: 0 10px 8px 37px; color: var(--muted); font-size: 11px; }
 .profile-button:hover, .profile-button[aria-expanded='true'] { border-color: var(--pink); background: #30232b; }
 .profile-button > img, .profile-small-avatar > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .profile-menu { position: absolute; top: calc(100% + 12px); right: 0; width: 236px; max-width: calc(100vw - 44px); padding: 6px; border: 1px solid #393038; border-radius: 9px; background: #141114; box-shadow: 0 12px 40px #0008; }
@@ -115,6 +114,7 @@ html.no-view-transitions .page-scene { animation: page-enter 160ms var(--ease-ou
 .secondary.is-saved { color: var(--pink); border-color: #e7a0b460; }
 .button.icon-button { padding: 0; }
 .favourite-control { position: relative; display: flex; }
+.favourite-control button[aria-busy='true'] { opacity: 1; }
 .recommended-empty { margin-bottom: 36px; }
 .recommended-empty h2 { font-size: 20px; margin-bottom: 12px; }
 .recommended-empty p { color: var(--muted); font-size: 14px; }

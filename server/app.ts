@@ -282,8 +282,14 @@ export function createApiHandler(options: AppOptions = {}) {
       if (method === 'GET' && route === 'downloads') {
         const result = await downloads.list();
         const address = request.socket.remoteAddress;
+        result.canManage = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
         result.canPickFolder &&= address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
         return send(response, 200, result);
+      }
+      if (method === 'PUT' && ['downloads/settings', 'downloads/location'].includes(route) && !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.socket.remoteAddress || '')) throw new ApiError('INVALID_REQUEST', 'Manage downloads on the host computer.', 403);
+      if (method === 'PUT' && route === 'downloads/settings') {
+        if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);
+        return send(response, 200, await downloads.setSettings(await readJson(request)));
       }
       if (method === 'PUT' && route === 'downloads/location') {
         if (!request.headers['content-type']?.startsWith('application/json')) throw new ApiError('INVALID_REQUEST', 'Expected JSON', 415);

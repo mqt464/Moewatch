@@ -1,3 +1,15 @@
+## Version 0.1.16 audit
+
+What this change does: Adds settings for playback, subtitles, appearance, accessibility and local data backups. Adds concurrent downloads and storage limits, revocable LAN devices, installed LAN launch links, a picture-in-picture window with player controls, and immediate favourite feedback with rollback on failure.
+
+Looks good. Ship.
+
+Reviewed the pending changes and connected account sync, preference persistence, download queue, host-only routes, sharing authentication, player controls and release packaging for one desktop host with a small number of trusted LAN clients. No release-blocking findings were confirmed. The review made no application-code changes.
+
+Validation: 209 app/API tests passed; two opt-in tests skipped. Seven relay tests passed. Production frontend and TypeScript unused-code checks passed. The affected browser run had 69 passes and one volume-tooltip opacity failure; that test passed on its focused rerun. This does not claim the entire browser suite passes.
+
+Not checked: physical mobile devices, live AniList writes, live provider playback, interactive installation and installed-client upgrade.
+
 ## Version 0.1.15 audit
 
 What this change does: Keeps Moewatch's player controls in element fullscreen wherever the browser supports it. Uses native video fullscreen when element fullscreen is unavailable.

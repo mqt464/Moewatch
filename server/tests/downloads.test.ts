@@ -305,3 +305,48 @@ test('a prefetch that takes over a minute resolves again before use', async cont
     assert.equal(calls, 2);
   } finally { release(); await service.close(); await rm(folder, { recursive: true, force: true }); }
 });
+
+test('download concurrency respects the selected limit and survives restart', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'moewatch-concurrency-'));
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const started = new Set<number>();
+  const dependencies = { stateFile: join(folder, 'state.json'), defaultLocation: join(folder, 'videos'), read: reader,
+    resolve: async (request: { animeId: number }) => { started.add(request.animeId); await gate; return playback; }, artwork: async (url: string) => url, thumbnail: async () => null };
+  const service = new DownloadService(dependencies);
+  try {
+    await assert.rejects(service.setSettings({ simultaneous: 20, limitGiB: -1 }));
+    await service.setSettings({ simultaneous: 2, limitGiB: 25 });
+    for (const id of [101,102,103]) await service.enqueue({ ...anime, id }, [1], { animeId: id, episode: 1, audio: 'sub' }, 720);
+    await waitFor(async () => started.size === 2);
+    assert.equal((await service.list()).downloads.filter(job => job.episodes[0].status === 'downloading').length, 2);
+    release();
+    await waitFor(async () => (await service.list()).downloads.every(job => job.episodes[0].status === 'complete'));
+    await service.close();
+    const restored = new DownloadService(dependencies);
+    assert.deepEqual((await restored.list()).settings, { simultaneous: 2, limitGiB: 25 });
+    await restored.close();
+  } finally { release(); await service.close(); await rm(folder, { recursive: true, force: true }); }
+});
+
+test('storage limits stop a download and preserve existing completed files', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'moewatch-storage-limit-'));
+  const dependencies = { stateFile: join(folder, 'state.json'), defaultLocation: join(folder, 'videos'), read: reader, resolve: async () => playback, artwork: async (url: string) => url, thumbnail: async () => null };
+  const first = new DownloadService(dependencies);
+  let second: DownloadService | undefined;
+  try {
+    await first.enqueue(anime, [1], { animeId: anime.id, episode: 1, audio: 'sub' }, 720);
+    await waitFor(async () => (await first.list()).downloads[0].episodes[0].status === 'complete');
+    await first.close();
+    const state = JSON.parse(await readFile(dependencies.stateFile, 'utf8'));
+    state.settings = { simultaneous: 1, limitGiB: 10 };
+    for (const name of Object.keys(state.jobs[0].files)) state.jobs[0].files[name].bytes = 11 * 1024 ** 3;
+    await writeFile(dependencies.stateFile, JSON.stringify(state));
+    second = new DownloadService(dependencies);
+    await second.enqueue({ ...anime, id: 200 }, [1], { animeId: 200, episode: 1, audio: 'sub' }, 720);
+    await waitFor(async () => (await second!.list()).downloads.find(job => job.anime.id === 200)?.episodes[0].status === 'failed');
+    const jobs = (await second.list()).downloads;
+    assert.match(jobs.find(job => job.anime.id === 200)!.episodes[0].error || '', /storage limit/);
+    assert.equal(jobs.find(job => job.anime.id === anime.id)!.episodes[0].status, 'complete');
+  } finally { await first.close(); await second?.close(); await rm(folder, { recursive: true, force: true }); }
+});

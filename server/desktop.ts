@@ -13,7 +13,12 @@ const shared = createSharedAccess(async (req,res) => {
   let file = resolve(root, '.' + decodeURIComponent(url.pathname));
   if (file !== root && !file.startsWith(root + sep)) { res.writeHead(403).end(); return; }
   try { if (!(await stat(file)).isFile()) file = resolve(root,'index.html'); } catch { file = resolve(root,'index.html'); }
-  const body = await readFile(file);
+  let body = await readFile(file);
+  if (url.pathname === '/manifest.webmanifest' && url.searchParams.has('device')) {
+   const manifest = JSON.parse(body.toString());
+   manifest.start_url = '/?device=' + encodeURIComponent(url.searchParams.get('device')!);
+   body = Buffer.from(JSON.stringify(manifest));
+  }
   res.writeHead(200, { 'Content-Type':types[extname(file)] || 'application/octet-stream', 'X-Content-Type-Options':'nosniff' }); res.end(body);
  } catch { res.writeHead(500).end('Unable to serve Moewatch'); }
 });

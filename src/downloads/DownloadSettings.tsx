@@ -22,6 +22,12 @@ export function DownloadSettings() {
     } catch (error) { setFailure(error instanceof Error ? error.message : 'Could not change folder.'); if (picker) setEditing(true); }
     finally { setBusy(false); }
   }
+  async function setDownloadSettings(patch: Partial<{ simultaneous: number; limitGiB: number }>) {
+    setBusy(true); setFailure('');
+    try { await apiRequest('/downloads/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ simultaneous: 1, limitGiB: 0, ...data?.settings, ...patch }) }); await refresh(); }
+    catch (error) { setFailure(error instanceof Error ? error.message : 'Could not save download settings.'); }
+    finally { setBusy(false); }
+  }
   const storage = data?.storage;
   const total = storage?.total || 0;
   const capacity = storage?.capacity || 0;
@@ -34,7 +40,7 @@ export function DownloadSettings() {
       { category: 'unused', label: 'Unused', bytes: storage!.free },
     ] : []),
   ];
-  return <section className="download-settings" aria-labelledby="downloads-settings-heading"><h2 id="downloads-settings-heading" className="settings-provider-heading">Downloads</h2>
+  return <section className="download-settings" aria-labelledby="downloads-settings-heading"><h2 id="downloads-settings-heading" className="sr-only">Download settings</h2>
     <SettingsCard>
       <SettingRow title="Local storage" stacked>
         <div className="download-storage"><div className="download-storage-summary"><span>{formatBytes(total)} used by downloads</span><span>{storage?.capacity ? `${formatBytes(storage.free)} available` : ''}</span></div>
@@ -42,9 +48,11 @@ export function DownloadSettings() {
           <div className="download-storage-legend">{segments.map(({ category, label, bytes }) => <span key={category}><i className={`storage-${category}`} />{label} <span>{formatBytes(bytes)}</span></span>)}</div>
         </div>
       </SettingRow>
-      <SettingRow title="Download quality" description="downloads closest matching quality">{binding => <SettingsSelect {...binding} value={preferences.downloadQuality} onChange={event => update({ downloadQuality: Number(event.target.value) as DownloadQuality })}><option value={480}>480p</option><option value={720}>720p</option><option value={1080}>1080p</option></SettingsSelect>}</SettingRow>
-      <SettingRow title="Download location" description={data?.location || 'Loading...'}>
-        <div className="download-location"><SettingsButton disabled={busy || !data} onClick={() => data?.canPickFolder ? void change(true) : setEditing(true)}><FolderOpen size={14} aria-hidden="true" />{busy ? 'Selecting...' : 'Change folder'}</SettingsButton></div>
+      <SettingRow title="Download quality">{binding => <SettingsSelect {...binding} value={preferences.downloadQuality} onChange={event => update({ downloadQuality: Number(event.target.value) as DownloadQuality })}><option value={480}>480p</option><option value={720}>720p</option><option value={1080}>1080p</option></SettingsSelect>}</SettingRow>
+      <SettingRow title="Simultaneous downloads">{binding => <SettingsSelect {...binding} disabled={busy || !data || data.canManage === false} value={data?.settings?.simultaneous || 1} onChange={event => void setDownloadSettings({ simultaneous: Number(event.target.value) })}>{[1,2,3].map(value => <option key={value} value={value}>{value} series</option>)}</SettingsSelect>}</SettingRow>
+      <SettingRow title="Storage limit">{binding => <SettingsSelect {...binding} disabled={busy || !data} value={data?.settings?.limitGiB || 0} onChange={event => void setDownloadSettings({ limitGiB: Number(event.target.value) })}>{[0,10,25,50,100,250].map(value => <option key={value} value={value}>{value ? value + ' GB' : 'No limit'}</option>)}</SettingsSelect>}</SettingRow>
+      <SettingRow title="Download location" description={data?.canManage === false ? 'Managed on the host computer.' : data?.location || 'Loading...'}>
+        <div className="download-location"><SettingsButton disabled={busy || !data || data.canManage === false} onClick={() => data?.canPickFolder ? void change(true) : setEditing(true)}><FolderOpen size={14} aria-hidden="true" />{busy ? 'Selecting...' : 'Change folder'}</SettingsButton></div>
       </SettingRow>
       {editing && <SettingRow title="Host folder" stacked>{binding => <form className="download-folder-form" onSubmit={event => { event.preventDefault(); void change(); }}><SettingsInput {...binding} value={location} onChange={event => setLocation(event.target.value)} required /><SettingsButton type="submit" disabled={busy}>Save</SettingsButton><SettingsButton onClick={() => setEditing(false)}>Cancel</SettingsButton></form>}</SettingRow>}
 
