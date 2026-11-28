@@ -24,7 +24,7 @@ assert(verify(null, createHash('blake2b512').update(bytes).digest(), key, raw.su
 assert(lines[2].startsWith('trusted comment: '));
 assert(verify(null, Buffer.concat([raw.subarray(10), Buffer.from(lines[2].slice('trusted comment: '.length))]), key, Buffer.from(lines[3], 'base64')), 'Invalid signature comment');
 const url = `https://github.com/mqt464/Moewatch/releases/download/${tag}/${basename(installer)}`;
-writeFileSync(join(dirname(installer), 'latest.json'), JSON.stringify({ version, notes: 'Keep custom player controls in fullscreen on supported desktops and mobile browsers. Use native video fullscreen when element fullscreen is unavailable. Fix fullscreen exit state, subtitles, and portrait touch scrubbing.', pub_date: new Date().toISOString(), platforms: {
+writeFileSync(join(dirname(installer), 'latest.json'), JSON.stringify({ version, notes: 'Add playback, subtitle, appearance and accessibility settings, library backups, concurrent downloads with storage limits, revocable LAN devices, and player controls in picture-in-picture.', pub_date: new Date().toISOString(), platforms: {
   'windows-x86_64': { signature, url }, 'windows-x86_64-nsis': { signature, url },
 } }, null, 2) + '\n');
 console.log(`Verified updater signature and manifest for ${tag}`);
