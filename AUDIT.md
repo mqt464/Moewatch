@@ -10,7 +10,7 @@ Verdict: Ship.
 
 Validation: 209 app/API tests passed; two opt-in tests skipped. Seven relay tests and all 67 player/settings browser tests passed. Production build passed. Native video PiP toggle/dismissal/rejection, volume dragging, menu focus and settings persistence are covered.
 
-Not checked: interactive native WebView2 PiP, physical devices, live provider playback, installer interaction and installed-client upgrade. The signed Windows installer is built by the release workflow.
+Not checked: interactive native WebView2 PiP, physical devices, live provider playback, installer interaction and installed-client upgrade. The hosted source build stopped because its Discord SDK download secret is unset. Built the Windows installer locally with the pinned SDK and existing Rust toolchain; the Discord bridge self-test passed. The prebuilt-signing workflow succeeded, and the downloaded installer signature verified against the existing updater public key. Verified updater version, platform signatures and download URLs before publishing v0.1.17 as the latest release. Installer SHA-256: 464be7dba54f1c64a025aa4ef41fee8a5a85bcb0e60e96cdcc6b87d84ef24fb9.
 
 ## Version 0.1.16 audit
 
