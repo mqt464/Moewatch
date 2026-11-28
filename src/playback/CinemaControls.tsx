@@ -1,4 +1,3 @@
-import { useDocumentPip } from './PipSurface';
 import { usePresence } from '../motion';
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Settings2, Captions, SkipForward, PictureInPicture2 } from 'lucide-react';
@@ -14,9 +13,6 @@ import { needsWatchCheck, recordActivity, watchSession } from './watchSession';
 import { useWatchSession } from './useWatchSession';
 
 export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro, outro, tracks, audio, audioAvailable, onAudioChange, animeId, episode, next, nextEpisode, local, children, onError, partyControls }: { videoRef: RefObject<HTMLVideoElement | null>; sourceUrl?: string; sourceType?: 'mp4' | 'webm' | 'hls'; intro?: SkipInterval; outro?: SkipInterval; tracks: SubtitleTrack[]; audio: AudioPreference; audioAvailable: Record<AudioPreference, boolean>; onAudioChange: (audio: AudioPreference) => void; animeId: number; episode: number; next?: () => void; nextEpisode?: { number: number; title?: string; image: string; series: string }; local: boolean; children: ReactNode; onError: (message: string) => void; partyControls?: ReactNode }) {
-  const documentPip = useDocumentPip();
-  const [subtitleDelay, setSubtitleDelay] = useState(0);
-  useEffect(() => setSubtitleDelay(0), [sourceUrl]);
   const { preferences, update } = usePreferences();
   const track = preferences.subtitles && tracks.length ? Math.max(0, tracks.findIndex(entry => entry.language === preferences.subtitleLanguage)) : -1;
   const [time, setTime] = useState(0), [duration, setDuration] = useState(0), [paused, setPaused] = useState(true), [muted, setMuted] = useState(false), [volume, setVolume] = useState(1), [buffered, setBuffered] = useState(0);
@@ -28,7 +24,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
   const watchDialog = useRef<HTMLDialogElement>(null);
   const resumeRequested = useRef(false);
   const sleep = useCallback(() => { setCountdown(null); setPanel(''); setWatchPrompt('sleep'); }, []);
-  const { sleepUntil, minutesLeft, setSleepTimer } = useWatchSession(videoRef, sourceUrl, sleep);
+  useWatchSession(videoRef, sourceUrl, sleep);
   useEffect(() => {
     if (!watchPrompt) {
       if (resumeRequested.current) {
@@ -85,7 +81,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     const owner = videoRef.current?.ownerDocument || document;
     owner.addEventListener('pointerdown', dismiss);
     return () => owner.removeEventListener('pointerdown', dismiss);
-  }, [panel, documentPip?.active]);
+  }, [panel, videoRef]);
   const nextRef = useRef(next); nextRef.current = next;
   useEffect(() => {
     const element = videoRef.current; if (!element) return;
@@ -156,10 +152,10 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     const nativeTrack = nativeCaptions.current.track;
     nativeTrack.mode = 'hidden';
     for (const cue of Array.from(nativeTrack.cues || [])) nativeTrack.removeCue(cue);
-    for (const cue of cues) nativeTrack.addCue(new VTTCue(Math.max(0, cue.start + subtitleDelay), Math.max(.001, cue.end + subtitleDelay), cue.text));
+    for (const cue of cues) nativeTrack.addCue(new VTTCue(cue.start, cue.end, cue.text));
     nativeTrack.mode = fullscreenMode === 'native' && cues.length ? 'showing' : 'disabled';
     return () => { nativeTrack.mode = 'disabled'; };
-  }, [fullscreenMode, cues, videoRef, sourceUrl, subtitleDelay]);
+  }, [fullscreenMode, cues, videoRef, sourceUrl]);
   function seek(value:number) { if (videoRef.current && duration) { videoRef.current.currentTime=Math.max(0,Math.min(duration,value)); setTime(videoRef.current.currentTime); notifyPartyControl(videoRef.current, 'seek'); } }
   function toggle() { togglePlayback(videoRef, onError); }
   async function pictureInPicture() {
@@ -167,8 +163,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
     if (!video) return;
     setNote('');
     try {
-      if (documentPip?.active || window.documentPictureInPicture && documentPip) await documentPip.toggle();
-      else if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
+      if (document.pictureInPictureElement === video) await document.exitPictureInPicture();
       else await video.requestPictureInPicture();
     } catch {
       setNote('Picture-in-picture is unavailable. Try again once the video has loaded.');
@@ -205,7 +200,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
       else if (event.key==='ArrowRight') {event.preventDefault();seek(time+10);}
       else if (event.key==='ArrowLeft') {event.preventDefault();seek(time-10);}
       else if (event.key==='m' && videoRef.current) videoRef.current.muted=!videoRef.current.muted;
-      else if (event.key==='f' && !documentPip?.active) void fullscreen();
+      else if (event.key==='f') void fullscreen();
     };
     const owner = videoRef.current?.ownerDocument || document;
     owner.addEventListener('keydown',key);return () => owner.removeEventListener('keydown',key);
@@ -226,17 +221,14 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
       <h2 id="watch-check-title">{watchPrompt === 'sleep' ? 'Sleep timer finished' : 'Still watching?'}</h2>
       <div className="language-options"><button type="button" autoFocus onClick={keepWatching}>Keep watching</button><button type="button" onClick={() => setWatchPrompt(null)}>Stop watching</button></div>
     </dialog>}
-    <div className="subtitle-overlay"  role="group" aria-label="Subtitles">{cues.filter(cue => time - subtitleDelay >= cue.start && time - subtitleDelay < cue.end).map((cue,index) => <span key={index} style={{ fontSize: `calc(clamp(18px, 2.1vw, 32px) * ${preferences.subtitleSize / 100})`, backgroundColor: `rgba(0,0,0,${preferences.subtitleBackground / 100})` }}>{cue.text}</span>)}</div>
+    <div className="subtitle-overlay"  role="group" aria-label="Subtitles">{cues.filter(cue => time>=cue.start && time<cue.end).map((cue,index) => <span key={index} style={{ fontSize: `calc(clamp(18px, 2.1vw, 32px) * ${preferences.subtitleSize / 100})`, backgroundColor: `rgba(0,0,0,${preferences.subtitleBackground / 100})` }}>{cue.text}</span>)}</div>
     <div className={'cinema-bottom'+(hidden?' is-idle':'')+(renderedPanel?' has-panel':'')} inert={hidden} aria-hidden={hidden}>
       {note && <p role="status">{note}</p>}
       {renderedPanel && <section {...presence} ref={panelRef} className={"cinema-panel"+(renderedPanel==='subtitles'?' subtitle-panel':'')+(!panel?' is-closing':'')} aria-label={renderedPanel==='settings'?'Playback settings':'Subtitle settings'} onKeyDown={event => {if(event.key==='Escape'){setPanel('');document.getElementById(panel==='settings'?'player-settings':'player-captions')?.focus();}}}>
-        {renderedPanel==='settings'? <>{children}<div className="player-options"><label className="autonext-option"><input type="checkbox" checked={autoNext} disabled={local} onChange={event=>{update({ autoNext: event.target.checked });setCountdown(null);}}/>Autonext</label><label>Sleep timer<select aria-label="Sleep timer" value={sleepUntil ? 'active' : '0'} onChange={event => setSleepTimer(Number(event.target.value))}>
-            {sleepUntil > 0 && <option value="active" disabled>{minutesLeft} min left</option>}
-            <option value="0">Off</option>{[15,30,60,90,120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
-          </select></label></div></>: <>
+        {renderedPanel==='settings'? <>{children}</>: <>
           <div className="language-choice" role="group" aria-label="Subtitles">
             <p>Subtitles</p>
-            <label className="subtitle-delay">Subtitle delay <input aria-label="Subtitle delay in seconds" type="number" min={-10} max={10} step={0.1} value={subtitleDelay} onChange={event => { const value = Number(event.target.value); if (Number.isFinite(value)) setSubtitleDelay(Math.max(-10, Math.min(10, value))); }} /> s</label><div className="language-options">{[false,true].map(enabled=><button key={String(enabled)} type="button" aria-pressed={enabled?track>=0:track<0} disabled={enabled&&!tracks.length} onClick={()=>update({ subtitles: enabled })}>{enabled?'On':'Off'}</button>)}</div>
+            <div className="language-options">{[false,true].map(enabled=><button key={String(enabled)} type="button" aria-pressed={enabled?track>=0:track<0} disabled={enabled&&!tracks.length} onClick={()=>update({ subtitles: enabled })}>{enabled?'On':'Off'}</button>)}</div>
           </div>
           <div className="language-choice" role="group" aria-label="Audio">
             <p>Audio</p>
@@ -252,7 +244,7 @@ export function CinemaControls({ videoRef, sourceUrl, sourceType = 'mp4', intro,
       <div className="timeline" onPointerDown={event => { touchScrubbing.current = event.pointerType === 'touch'; }} onPointerUp={event => { if (event.pointerType !== 'mouse') { touchScrubbing.current = false; setScrub(null); } }} onLostPointerCapture={() => { touchScrubbing.current = false; setScrub(null); }} onPointerMove={event => { if (!duration || event.pointerType === 'touch' && !touchScrubbing.current) return; const bounds = event.currentTarget.getBoundingClientRect(); const rotated = !event.currentTarget.closest('.watch-content')?.matches(':fullscreen') && window.matchMedia('(pointer: coarse) and (orientation: portrait) and (max-width: 600px)').matches; const position = Math.max(0, Math.min(1, ((rotated ? event.clientY - bounds.top : event.clientX - bounds.left) - 6) / ((rotated ? bounds.height : bounds.width) - 12))); setScrub({ time: position * duration, position }); }} onPointerLeave={() => setScrub(null)} onPointerCancel={() => { touchScrubbing.current = false; setScrub(null); }} style={{'--played':`${duration?time/duration*100:0}%`,'--buffered':`${duration?buffered/duration*100:0}%`} as React.CSSProperties}><div className="timeline-segments" aria-hidden="true">{(['intro', 'outro'] as const).map(kind => { const interval = skip[kind]; return interval ? <span key={kind} className={`timeline-segment timeline-segment-${kind}`} style={{ left: `${interval.start / duration * 100}%`, width: `${(interval.end - interval.start) / duration * 100}%` }} /> : null; })}</div><input aria-label="Playback position" aria-valuetext={`${clock(time)} of ${clock(duration)}${active ? active.label === 'Skip opening' ? ', opening' : ', ending' : ''}`} type="range" min={0} max={duration||1} step={0.1} value={time} disabled={!duration} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setScrub({ time, position: duration ? time / duration : 0 }); }} onBlur={() => setScrub(null)} onChange={event=>{ const value = Number(event.target.value); seek(value); if (touchScrubbing.current || event.currentTarget.matches(':focus-visible')) setScrub({ time: value, position: duration ? value / duration : 0 }); }}/>{scrub && sourceUrl && <ScrubPreview key={sourceUrl} source={{ url: sourceUrl, type: sourceType }} time={scrub.time} position={scrub.position} visible/>}</div>
       <div className="cinema-toolbar">
         <div className="transport">{icon(paused?'Play':'Pause',toggle,paused?<Play fill="currentColor"/>:<Pause fill="currentColor"/>,!sourceUrl)}<div className="volume-control">{icon(muted||!volume?'Unmute':'Mute',()=>{if(videoRef.current)videoRef.current.muted=!muted;},muted||!volume?<VolumeX/>:<Volume2/>)}<div className="volume-slider"><input style={{'--volume':`${(muted?0:volume)*100}%`} as React.CSSProperties} type="range" aria-label="Volume" aria-valuetext={`${Math.round((muted?0:volume)*100)}%`} min={0} max={1} step={0.05} value={muted?0:volume} onChange={event=>{if(videoRef.current){videoRef.current.volume=Number(event.target.value);videoRef.current.muted=false;}}}/><span className="volume-tooltip" aria-hidden="true" style={{left:`calc(${(muted?0:volume)*100}% + ${6-(muted?0:volume)*12}px)`}}>{Math.round((muted?0:volume)*100)}%</span></div></div></div>
-        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong></div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{(document.pictureInPictureEnabled || window.documentPictureInPicture) && <button type="button" className="cinema-icon" aria-label={(pip || documentPip?.active) ? 'Exit picture-in-picture' : 'Picture-in-picture'} title={(pip || documentPip?.active) ? 'Exit picture-in-picture' : 'Picture-in-picture'} aria-pressed={pip || documentPip?.active} disabled={!sourceUrl || !duration} onClick={() => void pictureInPicture()}><PictureInPicture2 aria-hidden="true"/></button>}{!documentPip?.active && icon(fullscreenMode !== 'inline'?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),fullscreenMode !== 'inline'?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
+        <div className="view-controls">{partyControls}<div className="next-control">{icon('Next episode',()=>next?.(),<SkipForward/>,!next)}{next && nextEpisode && <div className="next-preview" role="tooltip"><img src={nextEpisode.image} alt=""/><div><span className="next-preview-eyebrow">Episode {nextEpisode.number}</span><strong>{nextEpisode.title || nextEpisode.series}</strong></div></div>}</div><button id="player-captions" className="cinema-icon" aria-label="Subtitles" aria-pressed={track>=0} aria-expanded={panel==='subtitles'} onClick={()=>setPanel(panel==='subtitles'?'':'subtitles')}><Captions/><span className="control-caption">Subtitles</span></button><button id="player-settings" className="cinema-icon" aria-label="Playback settings" aria-expanded={panel==='settings'} onClick={()=>setPanel(panel==='settings'?'':'settings')}><Settings2/><span className="control-caption">Settings</span></button>{document.pictureInPictureEnabled && <button type="button" className="cinema-icon" aria-label={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} title={pip ? 'Exit picture-in-picture' : 'Picture-in-picture'} aria-pressed={pip} disabled={!sourceUrl || !duration} onClick={() => void pictureInPicture()}><PictureInPicture2 aria-hidden="true"/></button>}{icon(fullscreenMode !== 'inline'?'Exit fullscreen':'Fullscreen',()=>void fullscreen(),fullscreenMode !== 'inline'?<Minimize/>:<Maximize/>,!sourceUrl)}</div>
       </div>
     </div>
   </>;

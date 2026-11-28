@@ -1,3 +1,17 @@
+## Version 0.1.17 hotfix audit
+
+What this change does: Restores native video picture-in-picture and removes the document PiP wrapper that interrupted volume dragging and cleared player menu focus. Simplifies player settings to Provider and Server and removes the subtitle delay control.
+
+Reviewed the pending changes, connected player and preference consumers, settings conventions, tests, and release packaging for one desktop host with optional trusted LAN clients.
+
+Must fix (resolved): The pending player change read only the legacy autoplay key, ignoring saved v0.1.16 preferences. Kept the current preference as the source of truth; the regression check sets conflicting old and current values and verifies autoplay stays disabled.
+
+Verdict: Ship.
+
+Validation: 209 app/API tests passed; two opt-in tests skipped. Seven relay tests and all 67 player/settings browser tests passed. Production build passed. Native video PiP toggle/dismissal/rejection, volume dragging, menu focus and settings persistence are covered.
+
+Not checked: interactive native WebView2 PiP, physical devices, live provider playback, installer interaction and installed-client upgrade. The signed Windows installer is built by the release workflow.
+
 ## Version 0.1.16 audit
 
 What this change does: Adds settings for playback, subtitles, appearance, accessibility and local data backups. Adds concurrent downloads and storage limits, revocable LAN devices, installed LAN launch links, a picture-in-picture window with player controls, and immediate favourite feedback with rollback on failure.

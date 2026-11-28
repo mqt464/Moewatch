@@ -7,8 +7,8 @@ Only expose settings that provide value. Current categories:
 - Account: compact AniList profile, sign-in, sign-out, and manual sync.
 - Appearance: home editor, title language, release years, and home layout reset.
 - Integrations, desktop only: Discord activity and watchparty toggles.
-- Playback: audio, autoplay, resume, automatic skips, and provider priority.
-- Subtitles: enabled state, size, background opacity, and live preview. Delay belongs in the player and resets with each source.
+- Playback: audio, resume, automatic skips, and provider priority. The player settings panel contains only Provider and Server.
+- Subtitles: enabled state, size, background opacity, and live preview.
 - Downloads: storage usage, quality, host folder, simultaneous series, and storage limit. Downloads stop when disk space is low.
 - Accessibility: reduced motion, interface size, and keyboard shortcuts.
 - Data: export/import, watch history clearing, and preference reset. Shared devices receive library and preference changes. Backups exclude credentials and downloaded media.

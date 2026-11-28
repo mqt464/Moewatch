@@ -60,7 +60,7 @@ function PlaybackSettings() {
       <SettingRow title="Preferred audio">{binding => <SettingsSelect {...binding} value={preferences.audio} onChange={event => update({ audio: event.target.value as AudioPreference })}><option value="sub">Japanese</option><option value="dub">English dub</option></SettingsSelect>}</SettingRow>
     </SettingsCard>
 
-    <SettingsCard>{([['autoNext', 'Autoplay next episode'], ['resumePlayback', 'Resume saved position'], ['skipOpening', 'Skip openings automatically'], ['skipEnding', 'Skip endings automatically']] as const).map(([key, title]) => <SettingRow key={key} title={title}>{binding => <SettingsToggle {...binding} checked={preferences[key]} onChange={value => update({ [key]: value })} />}</SettingRow>)}</SettingsCard>
+    <SettingsCard>{([['resumePlayback', 'Resume saved position'], ['skipOpening', 'Skip openings automatically'], ['skipEnding', 'Skip endings automatically']] as const).map(([key, title]) => <SettingRow key={key} title={title}>{binding => <SettingsToggle {...binding} checked={preferences[key]} onChange={value => update({ [key]: value })} />}</SettingRow>)}</SettingsCard>
     <section aria-labelledby="provider-status-heading">
       <h2 id="provider-status-heading" className="settings-provider-heading">Providers</h2>
       <SettingsCard>

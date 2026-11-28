@@ -222,9 +222,9 @@ test('preferences synchronize between tabs', async ({ page, context }) => {
   await page.goto('/settings/playback');
   const second = await context.newPage();
   await second.goto('/settings/playback');
-  await expect(second.getByRole('switch', { name: 'Autoplay next episode' })).toBeVisible();
-  await page.getByRole('switch', { name: 'Autoplay next episode' }).uncheck();
-  await expect(second.getByRole('switch', { name: 'Autoplay next episode' })).not.toBeChecked();
+  await expect(second.getByRole('switch', { name: 'Resume saved position' })).toBeVisible();
+  await page.getByRole('switch', { name: 'Resume saved position' }).uncheck();
+  await expect(second.getByRole('switch', { name: 'Resume saved position' })).not.toBeChecked();
   await second.getByRole('combobox', { name: 'Preferred audio' }).selectOption('dub');
   await expect(page.getByRole('combobox', { name: 'Preferred audio' })).toHaveValue('dub');
   await second.close();
@@ -233,10 +233,10 @@ test('preferences synchronize between tabs', async ({ page, context }) => {
 
 test('new playback, subtitle and accessibility controls persist', async ({ page }) => {
   await page.goto('/settings/playback');
-  await page.getByRole('switch', { name: 'Autoplay next episode' }).uncheck();
+  await page.getByRole('switch', { name: 'Resume saved position' }).uncheck();
   await page.getByRole('switch', { name: 'Skip openings automatically' }).check();
   await page.reload();
-  await expect(page.getByRole('switch', { name: 'Autoplay next episode' })).not.toBeChecked();
+  await expect(page.getByRole('switch', { name: 'Resume saved position' })).not.toBeChecked();
   await expect(page.getByRole('switch', { name: 'Skip openings automatically' })).toBeChecked();
   await page.goto('/settings/subtitles');
   await page.getByRole('combobox', { name: 'Text size' }).selectOption('150');
